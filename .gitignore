@@ -1,0 +1,37 @@
+# Rust / Soroban
+/target/
+**/*.rs.bk
+*.wasm
+
+# Node / TypeScript
+node_modules/
+dist/
+build/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+next-env.d.ts
+
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+
+# Stellar local state
+.stellar/
+
+# Test & coverage artifacts
+coverage/
+playwright-report/
+test-results/
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+*.log

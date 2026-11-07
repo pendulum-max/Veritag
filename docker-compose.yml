@@ -1,0 +1,91 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: veritag-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-veritag}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-veritag}
+      POSTGRES_DB: ${POSTGRES_DB:-veritag}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-veritag} -d ${POSTGRES_DB:-veritag}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: veritag-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-veritag}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-veritag-secret}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: veritag-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://veritag:veritag@postgres:5432/veritag
+      S3_ENDPOINT: http://minio:9000
+      BACKEND_PORT: 4000
+    ports:
+      - "${BACKEND_PORT:-4000}:4000"
+    profiles:
+      - full
+
+  indexer:
+    build:
+      context: .
+      dockerfile: indexer/Dockerfile
+    container_name: veritag-indexer
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://veritag:veritag@postgres:5432/veritag
+    profiles:
+      - full
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    container_name: veritag-web
+    restart: unless-stopped
+    depends_on:
+      - backend
+    env_file:
+      - .env
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+    ports:
+      - "3000:3000"
+    profiles:
+      - full
+
+volumes:
+  postgres_data:
+  minio_data:

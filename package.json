@@ -1,0 +1,27 @@
+{
+  "name": "veritag",
+  "version": "0.1.0",
+  "private": true,
+  "description": "On-chain product authenticity and warranty registry on Stellar Soroban",
+  "license": "MIT",
+  "packageManager": "pnpm@12.16.1",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "contract:build": "stellar contract build",
+    "contract:test": "cargo test --workspace",
+    "contract:bindings": "./scripts/generate-bindings.sh",
+    "seed:demo": "tsx scripts/seed-demo.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}

@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
-import { Address, nativeToScVal } from "@stellar/stellar-sdk";
+import { Buffer } from "buffer";
+import { Address, hash as stellarSha256, nativeToScVal } from "@stellar/stellar-sdk";
 
 export const MAX_PROOF_DEPTH = 32;
 
@@ -19,7 +19,7 @@ export function hexToBytes32(hex: string): Buffer {
 }
 
 export function sha256(data: Uint8Array | string): Buffer {
-  return createHash("sha256").update(toBytes(data)).digest();
+  return Buffer.from(stellarSha256(toBytes(data)));
 }
 
 export function computeSerialHash(serial: Uint8Array | string): Buffer {

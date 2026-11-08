@@ -7,28 +7,26 @@ Veritag separates immutable cryptographic truth on **Stellar Soroban** from high
 ```mermaid
 flowchart TD
     Factory["Brand ERP / Printing Line"] -->|"POST /v1/brands/batches"| Backend["Backend API (Hono / TypeScript)"]
-    Web["Next.js Web App (Verify / Owner / Brand / Service)"] <-->|"REST + SEP-10 Auth"| Backend
+    Web["Next.js Web App (Verify / Owner / Brand / Service)"] <-->|"REST + SEP-10 / Passkey Auth"| Backend
     Web -->|"Direct Soroban RPC Reads"| Soroban["Stellar Soroban (VeritagRegistry)"]
-    Backend <-->|"Simulate / Relay / Fee-Bump Sponsor"| Soroban
-    Soroban -->|"Contract Events"| Indexer["Event Indexer (Poller + XDR Decoder)"]
-    Indexer -->|"Idempotent Projections"| Postgres[("PostgreSQL")]
+    Passkey["Consumer WebAuthn (secp256r1)"] -->|"__check_auth"| SmartWallet["PasskeyAccountContract (C...)"]
+    SmartWallet -->|"Authorizes Owner Ops"| Soroban
+    Backend <-->|"Simulate / Relay / Fee-Bump Sponsor / TTL Worker"| Soroban
+    Soroban -->|"Contract Events"| Indexer["Event Indexer (Poller + Backfill CLI)"]
+    Indexer -->|"Idempotent Projections"| Postgres[("PostgreSQL / Local JSON Store")]
     Backend <--> Postgres
-    Backend <-->|"SHA-256 Content-Addressed"| Storage[("S3-Compatible Object Storage")]
+    Backend <-->|"SHA-256 Content-Addressed"| Storage[("S3 / LocalDiskObjectStorage")]
 ```
 
-## On-Chain Data Model (`contracts/registry`)
+## On-Chain Smart Contracts (`contracts/`)
 
-A single `VeritagRegistry` contract serves all verified manufacturers:
-
-| Storage Tier | Key | Lifecycle & TTL |
-|---|---|---|
-| **Instance** | `DataKey::Config` | Extended on administrative & lifecycle writes (`admin`, `max_claims_per_unit`). |
-| **Persistent** | `DataKey::Brand(Address)` | Brand domain (`stellar.toml`), verification flag, and rotatable signing `admin`. |
-| **Persistent** | `DataKey::ServiceCenter(Address, Address)` | Per-brand authorized service center allowlist. |
-| **Persistent** | `DataKey::Batch(Address, BytesN<32>)` | Single 32-byte Merkle root, warranty duration, metadata hash, unit count, recall flag. |
-| **Persistent** | `DataKey::Unit(BytesN<32>)` | Created **lazily** on `activate`; TTL extended to cover remaining warranty + 90-day buffer (clamped to network `max_ttl`). |
-| **Temporary** | `DataKey::Offer(BytesN<32>)` | One-time resale transfer code hash; automatically expires and prunes from ledger state. |
-| **Persistent** | `DataKey::Claim(BytesN<32>, u32)` | Service claim history with outcome and off-chain diagnostic report SHA-256 hash. |
+1. **`contracts/registry` (`VeritagRegistry`):**
+   - Single multi-tenant authenticity and warranty registry serving all verified brands.
+   - Uses **Instance** storage for `Config`, **Persistent** storage for `Brand`, `ServiceCenter`, `Batch`, `Unit`, and `Claim` (with TTLs automatically extended to cover the remaining warranty + 90-day buffer), and **Temporary** storage for expiring `TransferOffer` codes.
+2. **`contracts/passkey-account` (`PasskeyAccountContract`):**
+   - Implements Soroban `CustomAccountInterface` (`__check_auth`) verifying WebAuthn `authenticatorData` (User Present bit), base64url challenge binding in `clientDataJSON`, and `secp256r1_verify` (P-256) hardware signatures, plus optional `Recovery` signer fallback and passkey rotation (`add_passkey`, `remove_passkey`).
+3. **`contracts/account-factory` (`AccountFactoryContract`):**
+   - Deterministically deploys `PasskeyAccountContract` instances via `env.deployer().with_current_contract(salt).deploy_v2(...)` so consumers get a predictable `C...` Soroban smart wallet address from their WebAuthn credential ID before or during first product activation.
 
 ## Identifier & Merkle Construction
 
@@ -42,12 +40,12 @@ All sensitive serials and secrets are hashed before touching the chain:
 
 Sorted-pair internal hashing allows compact `Vec<BytesN<32>>` proofs without auxiliary left/right bitvectors and guarantees deterministic parity between Rust (`contracts/registry/src/merkle.rs`) and TypeScript (`packages/sdk/src/merkle.ts`).
 
-## Event-Sourced Indexer (`indexer/`)
+## Event-Sourced Indexer & Backfill (`indexer/`)
 
 Soroban RPC nodes retain historical events for a bounded retention window. The Veritag indexer:
 
 1. Polls `getEvents` filtered by `REGISTRY_CONTRACT_ID` using persisted cursors in `indexer_state`.
-2. Falls back cleanly to `startLedger` if a cursor ages out of RPC retention.
+2. Supports ledger-range backfill via `veritag-indexer --backfill --from <startLedger> --to <endLedger>`.
 3. Decodes XDR `ScVal` topics and map payloads produced by `#[contractevent]` into typed TypeScript events.
-4. Applies projections idempotently inside PostgreSQL transactions keyed by event ID (`ON CONFLICT (id) DO NOTHING`), preventing double-counting on restarts or backfills.
+4. Applies projections idempotently inside PostgreSQL transactions keyed by event ID (`ON CONFLICT (id) DO NOTHING`).
 5. Tracks confirmation depth (`INDEXER_CONFIRMATION_LEDGERS`) before marking events `finalized = true`.

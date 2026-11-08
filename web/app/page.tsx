@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { QrScanner } from "@/components/QrScanner";
 
 const DEMO_BRAND = "GB7TAYRUZGE6TVT7NHP5SMIZRNQA6PLM423EYISAOAP3MKYIQMVYP2JO";
 const DEMO_BATCH = "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b";
@@ -51,7 +52,7 @@ export default function HomePage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
-      <div className="grid gap-10 lg:grid-cols-12 lg:items-center">
+      <div className="grid gap-10 lg:grid-cols-12 lg:items-start">
         <div className="lg:col-span-7 space-y-6">
           <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3.5 py-1 text-xs font-semibold text-blue-700">
             Merkle Batch Commits · Lazy Soroban Activation · Passkey Wallets
@@ -81,6 +82,8 @@ export default function HomePage() {
               ))}
             </div>
           </div>
+
+          <QrScanner />
         </div>
 
         <div className="lg:col-span-5">

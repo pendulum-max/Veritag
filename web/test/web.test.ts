@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { verifyProduct } from "../lib/stellar.js";
+import { registerPasskeySmartWallet } from "../lib/passkey.js";
+import { getFileDownloadUrl, verifyProduct } from "../lib/stellar.js";
 
-describe("@veritag/web verification logic", () => {
+describe("@veritag/web verification & passkey wallet logic", () => {
   beforeEach(() => {
     vi.stubGlobal(
       "fetch",
@@ -35,5 +36,16 @@ describe("@veritag/web verification logic", () => {
     const fake = await verifyProduct(brand, batch, "FAKE-000999");
     expect(fake.status).toBe("Unknown");
     expect(fake.authentic).toBe(false);
+  });
+
+  it("generates P-256 passkey wallet credentials and formats file download URLs", async () => {
+    const cred = await registerPasskeySmartWallet("Test Consumer Passkey");
+    expect(cred.publicKeyHex.length).toBe(130);
+    expect(cred.publicKeyHex.startsWith("04")).toBe(true);
+    expect(cred.stellarSmartAddress.startsWith("C")).toBe(true);
+    expect(cred.stellarSmartAddress.length).toBe(56);
+
+    const fileUrl = getFileDownloadUrl("a".repeat(64));
+    expect(fileUrl).toContain("/v1/files/" + "a".repeat(64));
   });
 });

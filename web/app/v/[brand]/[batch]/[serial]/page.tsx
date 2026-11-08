@@ -1,6 +1,6 @@
 import { ActivationDrawer } from "@/components/ActivationDrawer";
 import { StatusBanner } from "@/components/StatusBanner";
-import { verifyProduct } from "@/lib/stellar";
+import { fetchUnitTimeline, getFileDownloadUrl, verifyProduct } from "@/lib/stellar";
 
 interface VerifyPageProps {
   params: Promise<{
@@ -21,6 +21,7 @@ export default async function PublicVerifyPage({ params }: VerifyPageProps) {
   const serial = decodeURIComponent(raw.serial);
 
   const summary = await verifyProduct(brand, batch, serial);
+  const details = summary.unit ? await fetchUnitTimeline(summary.unitId) : { claims: [], timeline: [] };
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 space-y-6 sm:px-6">
@@ -104,6 +105,63 @@ export default async function PublicVerifyPage({ params }: VerifyPageProps) {
               </dd>
             </div>
           </dl>
+
+          {details.timeline.length > 0 && (
+            <div className="border-t border-slate-100 pt-4 space-y-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                On-Chain Provenance Timeline
+              </h3>
+              <ul className="space-y-1.5 text-xs">
+                {details.timeline.map((ev) => (
+                  <li
+                    key={ev.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2"
+                  >
+                    <span className="font-mono font-semibold text-slate-800">{ev.type}</span>
+                    <span className="font-mono text-slate-500">
+                      Tx: {ev.txHash.slice(0, 12)}... ·{" "}
+                      {ev.finalized ? "Finalized" : "Pending Finality"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {details.claims.length > 0 && (
+            <div className="border-t border-slate-100 pt-4 space-y-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Authorized Service Claims &amp; Anchored Reports
+              </h3>
+              <div className="space-y-2">
+                {details.claims.map((cl) => (
+                  <div
+                    key={cl.claimId}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs"
+                  >
+                    <div>
+                      <span className="font-semibold text-slate-900">
+                        Claim #{cl.claimId}: {cl.outcome}
+                      </span>
+                      <span className="ml-2 font-mono text-slate-500">
+                        SC: {cl.serviceCenter.slice(0, 8)}...
+                      </span>
+                    </div>
+                    {cl.reportHash && cl.reportHash !== "0".repeat(64) && (
+                      <a
+                        href={getFileDownloadUrl(cl.reportHash)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-semibold text-blue-600 hover:underline"
+                      >
+                        Download Report ({cl.reportHash.slice(0, 10)}...)
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
       )}
 

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { registerPasskeySmartWallet } from "@/lib/passkey";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { PUBLIC_CONFIG } from "@/lib/stellar";
+import { useWallet } from "@/lib/wallet-context";
 
 interface ActivationDrawerProps {
   brand: string;
@@ -11,18 +12,41 @@ interface ActivationDrawerProps {
 }
 
 export function ActivationDrawer({ brand, batchId, serial }: ActivationDrawerProps) {
+  const router = useRouter();
+  const { session, connectPasskey, connectRoleKeypair } = useWallet();
   const [secret, setSecret] = useState("");
   const [ownerAddress, setOwnerAddress] = useState("");
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  useEffect(() => {
+    if (session?.address) {
+      setOwnerAddress(session.address);
+    }
+  }, [session?.address]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.location.hash.startsWith("#s=")) {
+      const parsedSecret = decodeURIComponent(window.location.hash.slice(3));
+      if (parsedSecret) {
+        setSecret(parsedSecret);
+      }
+    }
+  }, []);
+
   async function handlePasskeyCreate() {
-    try {
-      const cred = await registerPasskeySmartWallet();
-      setOwnerAddress(cred.stellarSmartAddress);
-      setStatusMsg(`Passkey wallet bound: ${cred.stellarSmartAddress.slice(0, 10)}...`);
-    } catch (err) {
-      setStatusMsg(err instanceof Error ? err.message : "Passkey setup unavailable");
+    const created = await connectPasskey();
+    if (created) {
+      setOwnerAddress(created.address);
+      setStatusMsg(`Passkey smart account deployed & connected: ${created.address.slice(0, 12)}...`);
+    }
+  }
+
+  async function handleDemoOwnerConnect() {
+    const connected = await connectRoleKeypair("owner");
+    if (connected) {
+      setOwnerAddress(connected.address);
+      setStatusMsg(`Connected consumer signer: ${connected.address.slice(0, 12)}...`);
     }
   }
 
@@ -48,6 +72,7 @@ export function ActivationDrawer({ brand, batchId, serial }: ActivationDrawerPro
         setStatusMsg(`Activation failed: ${data.error ?? res.statusText}`);
       } else {
         setStatusMsg(`Unit activated on-chain! Unit ID: ${data.unitId?.slice(0, 16)}...`);
+        router.refresh();
       }
     } catch {
       setStatusMsg("Backend relay offline — connect local backend or submit directly via Soroban RPC.");
@@ -58,7 +83,7 @@ export function ActivationDrawer({ brand, batchId, serial }: ActivationDrawerPro
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 className="text-lg font-semibold text-slate-900">Claim & Activate Warranty</h2>
+      <h2 className="text-lg font-semibold text-slate-900">Claim &amp; Activate Warranty</h2>
       <p className="mt-1 text-sm text-slate-600">
         Reveal the hidden scratch-off code inside the sealed packaging to mint your unit record on
         Stellar with zero XLM gas fees (sponsored).
@@ -80,17 +105,26 @@ export function ActivationDrawer({ brand, batchId, serial }: ActivationDrawerPro
         </div>
 
         <div>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">
-              Owner Wallet Address (Passkey or Stellar G.../C...)
+              Owner Wallet Address (Passkey C... or Stellar G...)
             </label>
-            <button
-              type="button"
-              onClick={handlePasskeyCreate}
-              className="text-xs font-semibold text-blue-600 hover:text-blue-700"
-            >
-              + Create FaceID / Passkey Wallet
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handlePasskeyCreate}
+                className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+              >
+                + Create Passkey Wallet
+              </button>
+              <button
+                type="button"
+                onClick={handleDemoOwnerConnect}
+                className="text-xs font-semibold text-slate-600 hover:text-slate-900"
+              >
+                Use Quick Signer
+              </button>
+            </div>
           </div>
           <input
             type="text"
@@ -107,7 +141,9 @@ export function ActivationDrawer({ brand, batchId, serial }: ActivationDrawerPro
           disabled={submitting}
           className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
         >
-          {submitting ? "Verifying Merkle Proof & Sponsoring Tx..." : "Activate Product & Start Warranty"}
+          {submitting
+            ? "Verifying Merkle Proof & Sponsoring Tx..."
+            : "Activate Product & Start Warranty"}
         </button>
 
         {statusMsg && (

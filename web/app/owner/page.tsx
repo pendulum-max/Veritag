@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { registerPasskeySmartWallet, type PasskeyWalletCredential } from "@/lib/passkey";
+import { useCallback, useEffect, useState } from "react";
+import { PUBLIC_CONFIG } from "@/lib/stellar";
+import { useWallet } from "@/lib/wallet-context";
 
 interface OwnedProductItem {
   unitId: string;
@@ -24,24 +25,83 @@ const INITIAL_PRODUCTS: OwnedProductItem[] = [
 ];
 
 export default function OwnerPortalPage() {
-  const [wallet, setWallet] = useState<PasskeyWalletCredential | null>(null);
+  const { session, connectPasskey, connectRoleKeypair } = useWallet();
+  const [products, setProducts] = useState<OwnedProductItem[]>(INITIAL_PRODUCTS);
   const [transferCode, setTransferCode] = useState<string | null>(null);
   const [redeemUnitId, setRedeemUnitId] = useState("");
   const [redeemCode, setRedeemCode] = useState("");
   const [serviceCenterAddr, setServiceCenterAddr] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
 
-  async function handleConnectPasskey() {
+  const loadOwnerUnits = useCallback(async (address: string, token: string) => {
     try {
-      const cred = await registerPasskeySmartWallet("Veritag Owner Passkey");
-      setWallet(cred);
-      setFeedback(`Connected passkey smart wallet ${cred.stellarSmartAddress.slice(0, 12)}...`);
-    } catch (err) {
-      setFeedback(err instanceof Error ? err.message : "Passkey sign-in failed");
+      const res = await fetch(`${PUBLIC_CONFIG.apiUrl}/v1/owners/${encodeURIComponent(address)}/units`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        units: Array<{
+          unitId: string;
+          brand: string;
+          batchId: string;
+          warrantyExpiry: number;
+          claimsUsed: number;
+        }>;
+      };
+      if (data.units.length > 0) {
+        const nowSec = Math.floor(Date.now() / 1000);
+        setProducts(
+          data.units.map((u) => ({
+            unitId: u.unitId,
+            model: `Verified Unit ${u.unitId.slice(0, 10)}...`,
+            serial: `BATCH-${u.batchId.slice(0, 8)}`,
+            brandDomain: `${u.brand.slice(0, 8)}...`,
+            warrantyDaysRemaining: Math.max(0, Math.round((u.warrantyExpiry - nowSec) / 86_400)),
+            claimsUsed: u.claimsUsed,
+          })),
+        );
+      }
+    } catch {
+      // Keep demo items when offline
+    }
+  }, []);
+
+  useEffect(() => {
+    if (session?.address && session?.token) {
+      void loadOwnerUnits(session.address, session.token);
+    }
+  }, [session?.address, session?.token, loadOwnerUnits]);
+
+  async function handleConnectPasskey() {
+    const connected = await connectPasskey("Veritag Owner Passkey");
+    if (connected) {
+      setFeedback(`Connected passkey smart wallet ${connected.address.slice(0, 12)}...`);
     }
   }
 
-  function handleGenerateTransferCode(unitId: string) {
+  async function handleGenerateTransferCode(unitId: string) {
+    if (session?.token) {
+      try {
+        const res = await fetch(`${PUBLIC_CONFIG.apiUrl}/v1/transfer/offer`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.token}`,
+          },
+          body: JSON.stringify({ unitId, ttlSeconds: 86_400 }),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as { transferCode: string };
+          setTransferCode(data.transferCode);
+          setFeedback(
+            "Generated 24-hour one-time resale code anchored to your unit. Share this with the buyer.",
+          );
+          return;
+        }
+      } catch {
+        // Offline fallback
+      }
+    }
     const code = `XFER-${unitId.slice(0, 4).toUpperCase()}-${Math.floor(100000 + Math.random() * 900000)}`;
     setTransferCode(code);
     setFeedback(
@@ -49,19 +109,74 @@ export default function OwnerPortalPage() {
     );
   }
 
-  function handleRedeemSubmit(e: React.FormEvent) {
+  async function handleRedeemSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!redeemUnitId.trim() || !redeemCode.trim()) return;
+    if (session?.token) {
+      try {
+        const res = await fetch(`${PUBLIC_CONFIG.apiUrl}/v1/transfer/redeem`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.token}`,
+          },
+          body: JSON.stringify({
+            unitId: redeemUnitId.trim(),
+            code: redeemCode.trim(),
+          }),
+        });
+        if (res.ok) {
+          setFeedback(
+            `Ownership & remaining warranty transferred to ${session.address.slice(0, 10)}...!`,
+          );
+          setRedeemCode("");
+          await loadOwnerUnits(session.address, session.token);
+          return;
+        }
+        const err = (await res.json()) as { error?: string };
+        setFeedback(`Redeem failed: ${err.error ?? res.statusText}`);
+        return;
+      } catch {
+        // Offline fallback
+      }
+    }
     setFeedback(
       `Submitted sponsored redeem_transfer for unit ${redeemUnitId.slice(0, 12)}... with one-time code.`,
     );
     setRedeemCode("");
   }
 
-  function handleFileClaim(unitId: string) {
+  async function handleFileClaim(unitId: string) {
     if (!serviceCenterAddr.trim()) {
       setFeedback("Enter an authorized service center Stellar address first.");
       return;
+    }
+    if (session?.token) {
+      try {
+        const res = await fetch(`${PUBLIC_CONFIG.apiUrl}/v1/claims`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.token}`,
+          },
+          body: JSON.stringify({
+            unitId,
+            serviceCenter: serviceCenterAddr.trim(),
+          }),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as { claimId: number };
+          setFeedback(
+            `Warranty claim #${data.claimId} filed on-chain for service center ${serviceCenterAddr.slice(0, 10)}...`,
+          );
+          return;
+        }
+        const err = (await res.json()) as { error?: string };
+        setFeedback(`Claim failed: ${err.error ?? res.statusText}`);
+        return;
+      } catch {
+        // Offline fallback
+      }
     }
     setFeedback(
       `Warranty claim submitted for unit ${unitId.slice(0, 12)}... to service center ${serviceCenterAddr.slice(0, 10)}...`,
@@ -78,15 +193,26 @@ export default function OwnerPortalPage() {
             with zero XLM required.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={handleConnectPasskey}
-          className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
-        >
-          {wallet
-            ? `Passkey: ${wallet.stellarSmartAddress.slice(0, 8)}...`
-            : "Sign in with Passkey (WebAuthn)"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void handleConnectPasskey()}
+            className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            {session
+              ? `${session.label}: ${session.address.slice(0, 8)}...`
+              : "Sign in with Passkey (WebAuthn)"}
+          </button>
+          {!session && (
+            <button
+              type="button"
+              onClick={() => void connectRoleKeypair("owner")}
+              className="rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-800 hover:bg-slate-50"
+            >
+              Quick Owner Signer
+            </button>
+          )}
+        </div>
       </div>
 
       {feedback && (
@@ -97,7 +223,7 @@ export default function OwnerPortalPage() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-4">
-          {INITIAL_PRODUCTS.map((item) => (
+          {products.map((item) => (
             <div
               key={item.unitId}
               className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4"
@@ -106,7 +232,7 @@ export default function OwnerPortalPage() {
                 <div>
                   <span className="text-xs font-semibold text-blue-600">{item.brandDomain}</span>
                   <h2 className="text-lg font-bold text-slate-900">{item.model}</h2>
-                  <p className="font-mono text-xs text-slate-500">Serial: {item.serial}</p>
+                  <p className="font-mono text-xs text-slate-500">Unit ID: {item.unitId}</p>
                 </div>
                 <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
                   {item.warrantyDaysRemaining} days warranty left
@@ -116,7 +242,7 @@ export default function OwnerPortalPage() {
               <div className="grid gap-3 pt-2 sm:grid-cols-2">
                 <button
                   type="button"
-                  onClick={() => handleGenerateTransferCode(item.unitId)}
+                  onClick={() => void handleGenerateTransferCode(item.unitId)}
                   className="rounded-xl border border-slate-300 px-4 py-2.5 text-xs font-semibold text-slate-800 hover:bg-slate-50"
                 >
                   Create Resale Transfer Code
@@ -131,7 +257,7 @@ export default function OwnerPortalPage() {
                   />
                   <button
                     type="button"
-                    onClick={() => handleFileClaim(item.unitId)}
+                    onClick={() => void handleFileClaim(item.unitId)}
                     className="shrink-0 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-blue-700"
                   >
                     File Claim

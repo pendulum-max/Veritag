@@ -1,4 +1,4 @@
-import { RegistryContract } from "@veritag/sdk";
+import { computeSerialHash, hexToBytes32, RegistryContract } from "@veritag/sdk";
 
 export type VerificationStatus =
   | "AuthenticInactive"
@@ -38,13 +38,37 @@ export interface VerificationSummary {
   suspiciousScanVolume: boolean;
   contractId: string;
   ledgerSequence: number | null;
-  source: "soroban-rpc+api" | "demo-preview";
+  chainRpcSimulated?: boolean;
+  source: "soroban-rpc+api" | "soroban-rpc-direct" | "demo-preview";
+}
+
+export interface UnitTimelineEvent {
+  id: string;
+  type: string;
+  ledger: number;
+  txHash: string;
+  finalized: boolean;
+  createdAt: string;
+  data: Record<string, unknown>;
+}
+
+export interface UnitClaimSummary {
+  unitId: string;
+  claimId: number;
+  serviceCenter: string;
+  outcome: string;
+  reportHash: string;
+  filedAt: number;
+  resolvedAt: number | null;
 }
 
 export const PUBLIC_CONFIG = {
   apiUrl: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000",
   contractId:
     process.env.NEXT_PUBLIC_REGISTRY_CONTRACT_ID ??
+    "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
+  accountFactoryContractId:
+    process.env.NEXT_PUBLIC_ACCOUNT_FACTORY_CONTRACT_ID ??
     "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
   rpcUrl: process.env.NEXT_PUBLIC_SOROBAN_RPC_URL ?? "https://soroban-testnet.stellar.org",
   networkPassphrase:
@@ -78,6 +102,26 @@ export async function fetchLatestLedgerSequence(timeoutMs = 1500): Promise<numbe
     return typeof json.result?.sequence === "number" ? json.result.sequence : null;
   } catch {
     return null;
+  }
+}
+
+export async function simulateDirectOnChainVerify(
+  brand: string,
+  batch: string,
+  _serial: string,
+): Promise<boolean> {
+  if (PUBLIC_CONFIG.contractId === "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4") {
+    return false;
+  }
+  try {
+    const client = createRegistryReadClient();
+    const tx = await client.get_batch({
+      brand,
+      batch_id: hexToBytes32(batch),
+    });
+    return Boolean(tx.result);
+  } catch {
+    return false;
   }
 }
 
@@ -200,6 +244,7 @@ export async function verifyProduct(
   serial: string,
 ): Promise<VerificationSummary> {
   const ledgerPromise = fetchLatestLedgerSequence();
+  const rpcSimPromise = simulateDirectOnChainVerify(brand, batch, serial);
 
   try {
     const res = await fetch(
@@ -208,10 +253,14 @@ export async function verifyProduct(
     );
     if (res.ok) {
       const data = (await res.json()) as Omit<VerificationSummary, "ledgerSequence" | "source">;
-      const ledgerSequence = await ledgerPromise;
+      const [ledgerSequence, chainRpcSimulated] = await Promise.all([
+        ledgerPromise,
+        rpcSimPromise,
+      ]);
       return {
         ...data,
         ledgerSequence,
+        chainRpcSimulated,
         source: "soroban-rpc+api",
       };
     }
@@ -221,5 +270,35 @@ export async function verifyProduct(
 
   const demo = buildDemoSummary(brand, batch, serial);
   demo.ledgerSequence = await ledgerPromise;
+  demo.chainRpcSimulated = await rpcSimPromise;
   return demo;
+}
+
+export async function fetchUnitTimeline(unitId: string): Promise<{
+  claims: UnitClaimSummary[];
+  timeline: UnitTimelineEvent[];
+}> {
+  try {
+    const res = await fetch(`${PUBLIC_CONFIG.apiUrl}/v1/units/${encodeURIComponent(unitId)}`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(1500),
+    });
+    if (res.ok) {
+      const data = (await res.json()) as {
+        claims: UnitClaimSummary[];
+        timeline: UnitTimelineEvent[];
+      };
+      return {
+        claims: data.claims ?? [],
+        timeline: data.timeline ?? [],
+      };
+    }
+  } catch {
+    // Offline fallback
+  }
+  return { claims: [], timeline: [] };
+}
+
+export function getFileDownloadUrl(hash: string): string {
+  return `${PUBLIC_CONFIG.apiUrl}/v1/files/${encodeURIComponent(hash)}`;
 }

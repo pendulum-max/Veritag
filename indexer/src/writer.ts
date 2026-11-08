@@ -179,8 +179,11 @@ export class InMemoryIndexerWriter implements IndexerWriter {
 export class PostgresIndexerWriter implements IndexerWriter {
   private readonly pool: pg.Pool;
 
-  constructor(databaseUrl: string) {
-    this.pool = new pg.Pool({ connectionString: databaseUrl });
+  constructor(databaseUrlOrPool: string | pg.Pool) {
+    this.pool =
+      typeof databaseUrlOrPool === "string"
+        ? new pg.Pool({ connectionString: databaseUrlOrPool })
+        : databaseUrlOrPool;
   }
 
   async close(): Promise<void> {

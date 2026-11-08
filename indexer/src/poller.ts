@@ -139,4 +139,68 @@ export class IndexerPoller {
       finalized: newlyFinalized,
     };
   }
+
+  /**
+   * Backfills contract events across a historical ledger range `[fromLedger, toLedger]`,
+   * paginating by cursor until `toLedger` is reached.
+   */
+  async backfillRange(
+    fromLedger: number,
+    toLedger: number,
+  ): Promise<{ pages: number; fetched: number; applied: number }> {
+    if (fromLedger <= 0 || toLedger < fromLedger) {
+      throw new Error("Invalid backfill ledger range");
+    }
+
+    let cursor: string | undefined;
+    let currentStart = fromLedger;
+    let pages = 0;
+    let totalFetched = 0;
+    let totalApplied = 0;
+
+    while (currentStart <= toLedger) {
+      const page = await this.provider.fetchEvents({
+        contractId: this.contractId,
+        cursor,
+        startLedger: cursor ? undefined : currentStart,
+        limit: this.batchLimit,
+      });
+      pages++;
+
+      if (page.events.length === 0) {
+        break;
+      }
+
+      const confirmedCutoff = page.latestLedger - this.confirmationLedgers;
+      let maxEventLedger = currentStart;
+
+      for (const rawEv of page.events) {
+        maxEventLedger = Math.max(maxEventLedger, rawEv.ledger);
+        if (rawEv.ledger > toLedger) continue;
+        totalFetched++;
+
+        const decoded = decodeRegistryEvent(rawEv);
+        if (!decoded) continue;
+
+        const isFinalized = decoded.ledger <= confirmedCutoff;
+        const { applied } = await this.writer.applyEvent(decoded, isFinalized);
+        if (applied) {
+          totalApplied++;
+        }
+      }
+
+      await this.writer.saveCursor({
+        lastLedger: Math.min(maxEventLedger, toLedger),
+        lastCursor: page.cursor || cursor || "",
+      });
+
+      if (maxEventLedger >= toLedger || !page.cursor || page.cursor === cursor) {
+        break;
+      }
+      cursor = page.cursor;
+      currentStart = maxEventLedger;
+    }
+
+    return { pages, fetched: totalFetched, applied: totalApplied };
+  }
 }

@@ -1,9 +1,11 @@
 import { Address, Keypair, nativeToScVal, xdr } from "@stellar/stellar-sdk";
 import { sha256 } from "@veritag/sdk";
+import type pg from "pg";
 import { describe, expect, it } from "vitest";
 import { decodeRegistryEvent, type RawSorobanEvent } from "../src/decoder.js";
+import { parseCliArgs } from "../src/index.js";
 import { IndexerPoller, type SorobanEventsProvider } from "../src/poller.js";
-import { InMemoryIndexerWriter } from "../src/writer.js";
+import { InMemoryIndexerWriter, PostgresIndexerWriter } from "../src/writer.js";
 
 function scSym(s: string): xdr.ScVal {
   return xdr.ScVal.scvSymbol(s);
@@ -186,5 +188,89 @@ describe("@veritag/indexer XDR decoder, poller, and idempotent writer", () => {
     const projectedClaim = writer.claims.get(`${unitHex}:1`)!;
     expect(projectedClaim.outcome).toBe("Repaired");
     expect(projectedClaim.reportHash).toBe(reportHash.toString("hex"));
+  });
+
+  it("backfills ledger ranges across pages and executes PostgresIndexerWriter SQL transactions", async () => {
+    expect(parseCliArgs(["--backfill", "--from", "50", "--to", "150"])).toEqual({
+      backfill: true,
+      fromLedger: 50,
+      toLedger: 150,
+    });
+
+    const brand = Keypair.random().publicKey();
+    const rawPage1: RawSorobanEvent[] = [
+      {
+        id: "000050-1",
+        ledger: 50,
+        txHash: "tx50",
+        topic: [scSym("brand_registered"), scAddr(brand)],
+        value: scMap([["domain", xdr.ScVal.scvString("helvetia.ch")]]),
+      },
+    ];
+    const rawPage2: RawSorobanEvent[] = [
+      {
+        id: "000080-1",
+        ledger: 80,
+        txHash: "tx80",
+        topic: [scSym("brand_verified"), scAddr(brand)],
+        value: scMap([]),
+      },
+    ];
+
+    const seenIds = new Set<string>();
+    const executedSql: string[] = [];
+
+    const mockClient = {
+      query: async (sql: string, params: unknown[] = []) => {
+        executedSql.push(sql.trim());
+        if (sql.includes("INSERT INTO unit_events")) {
+          const evId = String(params[0]);
+          if (seenIds.has(evId)) {
+            return { rowCount: 0, rows: [] };
+          }
+          seenIds.add(evId);
+          return { rowCount: 1, rows: [{ id: evId }] };
+        }
+        return { rowCount: 1, rows: [] };
+      },
+      release: () => {},
+    };
+
+    const mockPool = {
+      connect: async () => mockClient,
+      query: async (sql: string) => {
+        executedSql.push(sql.trim());
+        return { rowCount: 0, rows: [] };
+      },
+      end: async () => {},
+    } as unknown as pg.Pool;
+
+    const pgWriter = new PostgresIndexerWriter(mockPool);
+    let pageCall = 0;
+    const provider: SorobanEventsProvider = {
+      async fetchEvents() {
+        pageCall++;
+        if (pageCall === 1) {
+          return { latestLedger: 120, cursor: "c1", events: rawPage1 };
+        }
+        return { latestLedger: 120, cursor: "c2", events: rawPage2 };
+      },
+    };
+
+    const poller = new IndexerPoller({
+      contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
+      provider,
+      writer: pgWriter,
+    });
+
+    const summary = await poller.backfillRange(50, 80);
+    expect(summary).toEqual({ pages: 2, fetched: 2, applied: 2 });
+    expect(executedSql.some((s) => s.includes("INSERT INTO brands"))).toBe(true);
+    expect(executedSql.some((s) => s.includes("UPDATE brands SET verified = TRUE"))).toBe(true);
+
+    // Re-applying an already-seen event is idempotently ignored
+    const duplicateDecoded = decodeRegistryEvent(rawPage1[0]!)!;
+    const dupRes = await pgWriter.applyEvent(duplicateDecoded, true);
+    expect(dupRes.applied).toBe(false);
   });
 });

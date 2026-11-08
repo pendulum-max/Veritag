@@ -1,12 +1,25 @@
 import { Keypair } from "@stellar/stellar-sdk";
+import { Buffer } from "buffer";
 import { describe, expect, it } from "vitest";
 import {
+  AccountFactoryContract,
   MerkleTree,
+  P256_CURVE_ORDER,
+  P256_HALF_ORDER,
+  PasskeyAccountContract,
+  base64UrlDecode,
+  base64UrlEncode,
   buildVerifyUrl,
   computeLeaf,
   computeSecretHash,
   computeSerialHash,
   computeUnitId,
+  derSignatureToCompactLowS,
+  derivePasskeySalt,
+  encodeQrMatrix,
+  extractP256UncompressedPublicKey,
+  generateQrDataUrl,
+  generateQrSvg,
   hexToBytes32,
   parseVerifyPath,
   sha256,
@@ -59,5 +72,65 @@ describe("@veritag/sdk merkle & identifiers", () => {
 
     const parsed = parseVerifyPath(new URL(url).pathname);
     expect(parsed).toEqual({ brand, batch, serial });
+  });
+
+  it("extracts 65-byte P-256 public keys from SPKI DER and normalizes DER ECDSA signatures to low-S", () => {
+    const fakeXY = Buffer.alloc(64, 0x33);
+    const spkiHeader = Buffer.from("3059301306072a8648ce3d020106082a8648ce3d03010703420004", "hex");
+    const spkiDer = Buffer.concat([spkiHeader, fakeXY]);
+
+    const extracted = extractP256UncompressedPublicKey(spkiDer);
+    expect(extracted.length).toBe(65);
+    expect(extracted[0]).toBe(0x04);
+    expect(extracted.subarray(1).equals(fakeXY)).toBe(true);
+
+    // Construct an ASN.1 DER signature with s > n / 2 to verify low-S normalization
+    const r = 12345678901234567890n;
+    const highS = P256_HALF_ORDER + 999n;
+    const expectedLowS = P256_CURVE_ORDER - highS;
+
+    const rBytes = Buffer.from(r.toString(16).padStart(64, "0"), "hex");
+    const sBytes = Buffer.concat([
+      Buffer.from([0x00]),
+      Buffer.from(highS.toString(16).padStart(64, "0"), "hex"),
+    ]);
+    const derBody = Buffer.concat([
+      Buffer.from([0x02, rBytes.length]),
+      rBytes,
+      Buffer.from([0x02, sBytes.length]),
+      sBytes,
+    ]);
+    const derSig = Buffer.concat([Buffer.from([0x30, derBody.length]), derBody]);
+
+    const compact = derSignatureToCompactLowS(derSig);
+    expect(compact.length).toBe(64);
+    const parsedS = BigInt("0x" + compact.subarray(32, 64).toString("hex"));
+    expect(parsedS).toBe(expectedLowS);
+    expect(parsedS <= P256_HALF_ORDER).toBe(true);
+
+    // Base64URL round-trip and salt derivation
+    const payload = sha256("webauthn-challenge");
+    const b64u = base64UrlEncode(payload);
+    expect(b64u.length).toBe(43);
+    expect(base64UrlDecode(b64u).equals(payload)).toBe(true);
+    expect(derivePasskeySalt("cred-123").length).toBe(32);
+  });
+
+  it("generates ISO/IEC 18004 QR matrices, SVG markup, and data URLs", () => {
+    const url = "https://veritag.stellar.org/v/GBRAND123/" + "b".repeat(64) + "/SN-001#s=secret123";
+    const matrix = encodeQrMatrix(url);
+    expect(matrix.length).toBeGreaterThanOrEqual(21);
+    expect(matrix[0]?.[0]).toBe(true); // Top-left finder corner
+
+    const svg = generateQrSvg(url, { label: "SN-001" });
+    expect(svg).toContain("<svg");
+    expect(svg).toContain("data-qr-payload=");
+    expect(svg).toContain("<title>SN-001</title>");
+
+    const dataUrl = generateQrDataUrl(url);
+    expect(dataUrl.startsWith("data:image/svg+xml;base64,")).toBe(true);
+
+    expect(typeof PasskeyAccountContract.Client).toBe("function");
+    expect(typeof AccountFactoryContract.Client).toBe("function");
   });
 });

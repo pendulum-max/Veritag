@@ -6,16 +6,22 @@ cd "$ROOT_DIR"
 
 IDENTITY="${STELLAR_IDENTITY:-deployer}"
 NETWORK="${STELLAR_NETWORK:-testnet}"
-ALIAS="${CONTRACT_ALIAS:-veritag-registry}"
+REGISTRY_ALIAS="${CONTRACT_ALIAS:-veritag-registry}"
+FACTORY_ALIAS="${FACTORY_ALIAS:-veritag-account-factory}"
 
-echo "==> Building Veritag registry contract WASM..."
-stellar contract build --package registry
+echo "==> Building all Veritag Soroban contracts..."
+stellar contract build
 
-WASM_PATH="$ROOT_DIR/target/wasm32v1-none/release/registry.wasm"
-if [[ ! -f "$WASM_PATH" ]]; then
-  echo "Error: WASM artifact not found at $WASM_PATH" >&2
-  exit 1
-fi
+REGISTRY_WASM="$ROOT_DIR/target/wasm32v1-none/release/registry.wasm"
+PASSKEY_WASM="$ROOT_DIR/target/wasm32v1-none/release/passkey_account.wasm"
+FACTORY_WASM="$ROOT_DIR/target/wasm32v1-none/release/account_factory.wasm"
+
+for f in "$REGISTRY_WASM" "$PASSKEY_WASM" "$FACTORY_WASM"; do
+  if [[ ! -f "$f" ]]; then
+    echo "Error: WASM artifact not found at $f" >&2
+    exit 1
+  fi
+done
 
 echo "==> Ensuring Stellar identity '$IDENTITY' exists on $NETWORK..."
 if ! stellar keys address "$IDENTITY" >/dev/null 2>&1; then
@@ -25,25 +31,42 @@ fi
 ADMIN_ADDRESS="$(stellar keys address "$IDENTITY")"
 echo "==> Admin address: $ADMIN_ADDRESS"
 
-echo "==> Deploying contract to $NETWORK..."
-CONTRACT_ID="$(stellar contract deploy \
-  --wasm "$WASM_PATH" \
+echo "==> Deploying Veritag Registry contract to $NETWORK..."
+REGISTRY_ID="$(stellar contract deploy \
+  --wasm "$REGISTRY_WASM" \
   --source-account "$IDENTITY" \
   --network "$NETWORK" \
-  --alias "$ALIAS")"
+  --alias "$REGISTRY_ALIAS")"
 
-echo "==> Initializing contract with admin $ADMIN_ADDRESS..."
+echo "==> Initializing Registry contract with admin $ADMIN_ADDRESS..."
 stellar contract invoke \
-  --id "$CONTRACT_ID" \
+  --id "$REGISTRY_ID" \
   --source-account "$IDENTITY" \
   --network "$NETWORK" \
   -- \
   init \
   --admin "$ADMIN_ADDRESS"
 
+echo "==> Uploading PasskeyAccount WASM to $NETWORK..."
+PASSKEY_WASM_HASH="$(stellar contract upload \
+  --wasm "$PASSKEY_WASM" \
+  --source-account "$IDENTITY" \
+  --network "$NETWORK")"
+
+echo "==> Deploying AccountFactory contract to $NETWORK..."
+FACTORY_ID="$(stellar contract deploy \
+  --wasm "$FACTORY_WASM" \
+  --source-account "$IDENTITY" \
+  --network "$NETWORK" \
+  --alias "$FACTORY_ALIAS" \
+  -- \
+  --account_wasm_hash "$PASSKEY_WASM_HASH")"
+
 echo ""
 echo "============================================================"
-echo "Veritag Registry deployed and initialized on $NETWORK!"
-echo "REGISTRY_CONTRACT_ID=$CONTRACT_ID"
+echo "Veritag Contracts deployed and initialized on $NETWORK!"
+echo "REGISTRY_CONTRACT_ID=$REGISTRY_ID"
+echo "ACCOUNT_FACTORY_CONTRACT_ID=$FACTORY_ID"
+echo "PASSKEY_ACCOUNT_WASM_HASH=$PASSKEY_WASM_HASH"
 echo "ADMIN_ADDRESS=$ADMIN_ADDRESS"
 echo "============================================================"

@@ -5,7 +5,9 @@ import { InMemoryRepository, type Repository } from "./db/repository.js";
 import { createV1Router } from "./routes/api.js";
 import { AuthService, SlidingWindowRateLimiter } from "./services/auth.js";
 import { type RelayerService, StellarFeeSponsorService } from "./services/relayer.js";
+import { SorobanTransactionService } from "./services/soroban-tx.js";
 import { ContentAddressedMemoryStorage, type ObjectStorageAdapter } from "./services/storage.js";
+import { TtlMaintenanceWorker } from "./services/ttl-worker.js";
 
 export interface CreateAppOptions {
   config?: BackendConfig;
@@ -14,6 +16,9 @@ export interface CreateAppOptions {
   rateLimiter?: SlidingWindowRateLimiter;
   storage?: ObjectStorageAdapter;
   relayer?: RelayerService;
+  sorobanTx?: SorobanTransactionService;
+  ttlWorker?: TtlMaintenanceWorker;
+  tomlFetch?: typeof fetch;
 }
 
 export function createApp(options: CreateAppOptions = {}): Hono {
@@ -32,6 +37,9 @@ export function createApp(options: CreateAppOptions = {}): Hono {
         maxStroopsPerUserWindow: config.maxSponsorStroopsPerUserWindow,
       },
     });
+  const sorobanTx = options.sorobanTx ?? new SorobanTransactionService(config);
+  const ttlWorker =
+    options.ttlWorker ?? new TtlMaintenanceWorker({ config, repo, sorobanTx });
 
   const app = new Hono();
 
@@ -50,6 +58,7 @@ export function createApp(options: CreateAppOptions = {}): Hono {
       service: "veritag-backend",
       network: config.stellarNetwork,
       contractId: config.registryContractId,
+      accountFactoryContractId: config.accountFactoryContractId,
     }),
   );
 
@@ -62,6 +71,9 @@ export function createApp(options: CreateAppOptions = {}): Hono {
       rateLimiter,
       storage,
       relayer,
+      sorobanTx,
+      ttlWorker,
+      tomlFetch: options.tomlFetch,
     }),
   );
 

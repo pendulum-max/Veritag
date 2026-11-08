@@ -1,5 +1,5 @@
 -- Veritag PostgreSQL Schema
--- Idempotent migration script matching Soroban Registry state and event history
+-- Idempotent migration script matching Soroban Registry state, Passkey wallets, and event history
 
 CREATE TABLE IF NOT EXISTS brands (
   address TEXT PRIMARY KEY,
@@ -114,3 +114,45 @@ CREATE TABLE IF NOT EXISTS indexer_state (
   last_cursor TEXT NOT NULL DEFAULT '',
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS auth_challenges (
+  nonce TEXT PRIMARY KEY,
+  account TEXT NOT NULL,
+  message TEXT NOT NULL,
+  expires_at BIGINT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS transfer_offers (
+  unit_id TEXT PRIMARY KEY,
+  code_hash TEXT NOT NULL,
+  expires_at BIGINT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS rate_limit_hits (
+  bucket_key TEXT NOT NULL,
+  hit_at BIGINT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_rate_limit_hits_key ON rate_limit_hits(bucket_key, hit_at DESC);
+
+CREATE TABLE IF NOT EXISTS sponsor_spend (
+  bucket_key TEXT NOT NULL,
+  stroops BIGINT NOT NULL,
+  spent_at BIGINT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sponsor_spend_key ON sponsor_spend(bucket_key, spent_at DESC);
+
+CREATE TABLE IF NOT EXISTS passkey_wallets (
+  credential_id TEXT PRIMARY KEY,
+  wallet_address TEXT NOT NULL,
+  public_key_hex TEXT NOT NULL,
+  salt_hex TEXT NOT NULL,
+  recovery_address TEXT,
+  deployed BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_passkey_wallets_address ON passkey_wallets(wallet_address);

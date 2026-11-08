@@ -1,3 +1,5 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import pg from "pg";
 
 export interface BrandRecord {
@@ -83,15 +85,27 @@ export interface TransferOfferCache {
   expiresAt: number;
 }
 
+export interface PasskeyWalletRecord {
+  credentialId: string;
+  walletAddress: string;
+  publicKeyHex: string;
+  saltHex: string;
+  recoveryAddress: string | null;
+  deployed: boolean;
+  createdAt: string;
+}
+
 export interface Repository {
   upsertBrand(brand: BrandRecord): Promise<void>;
   getBrand(address: string): Promise<BrandRecord | null>;
   setServiceCenter(brand: string, serviceCenter: string, authorized: boolean): Promise<void>;
   isServiceCenter(brand: string, serviceCenter: string): Promise<boolean>;
+  listBrandServiceCenters(brand: string): Promise<string[]>;
 
   insertBatch(batch: BatchRecord, units: BatchUnitProvisionRecord[]): Promise<void>;
   getBatch(brand: string, batchId: string): Promise<BatchRecord | null>;
   listBrandBatches(brand: string): Promise<BatchRecord[]>;
+  listAllBatches(): Promise<BatchRecord[]>;
   getBatchUnits(brand: string, batchId: string): Promise<BatchUnitProvisionRecord[]>;
   getBatchUnitBySerialHash(
     brand: string,
@@ -104,6 +118,7 @@ export interface Repository {
   upsertUnit(unit: UnitRecord): Promise<void>;
   getUnit(unitId: string): Promise<UnitRecord | null>;
   listOwnerUnits(owner: string): Promise<UnitRecord[]>;
+  listAllUnits(): Promise<UnitRecord[]>;
   recordScan(unitId: string, ipHash: string, uaHash: string): Promise<number>;
 
   appendEvent(event: UnitEventRecord): Promise<void>;
@@ -120,19 +135,24 @@ export interface Repository {
 
   saveFileMetadata(file: FileMetadataRecord): Promise<void>;
   getFileMetadata(hash: string): Promise<FileMetadataRecord | null>;
+
+  upsertPasskeyWallet(wallet: PasskeyWalletRecord): Promise<void>;
+  getPasskeyWallet(credentialId: string): Promise<PasskeyWalletRecord | null>;
+  getPasskeyWalletByAddress(walletAddress: string): Promise<PasskeyWalletRecord | null>;
 }
 
 export class InMemoryRepository implements Repository {
-  private readonly brands = new Map<string, BrandRecord>();
-  private readonly serviceCenters = new Set<string>();
-  private readonly batches = new Map<string, BatchRecord>();
-  private readonly batchUnits = new Map<string, BatchUnitProvisionRecord>();
-  private readonly units = new Map<string, UnitRecord>();
-  private readonly events = new Map<string, UnitEventRecord>();
-  private readonly offers = new Map<string, TransferOfferCache>();
-  private readonly claims = new Map<string, ClaimRecord>();
-  private readonly files = new Map<string, FileMetadataRecord>();
-  private readonly scans = new Map<string, number>();
+  protected readonly brands = new Map<string, BrandRecord>();
+  protected readonly serviceCenters = new Set<string>();
+  protected readonly batches = new Map<string, BatchRecord>();
+  protected readonly batchUnits = new Map<string, BatchUnitProvisionRecord>();
+  protected readonly units = new Map<string, UnitRecord>();
+  protected readonly events = new Map<string, UnitEventRecord>();
+  protected readonly offers = new Map<string, TransferOfferCache>();
+  protected readonly claims = new Map<string, ClaimRecord>();
+  protected readonly files = new Map<string, FileMetadataRecord>();
+  protected readonly scans = new Map<string, number>();
+  protected readonly passkeyWallets = new Map<string, PasskeyWalletRecord>();
 
   async upsertBrand(brand: BrandRecord): Promise<void> {
     this.brands.set(brand.address, { ...brand });
@@ -155,6 +175,13 @@ export class InMemoryRepository implements Repository {
     return this.serviceCenters.has(`${brand}:${serviceCenter}`);
   }
 
+  async listBrandServiceCenters(brand: string): Promise<string[]> {
+    const prefix = `${brand}:`;
+    return [...this.serviceCenters]
+      .filter((key) => key.startsWith(prefix))
+      .map((key) => key.slice(prefix.length));
+  }
+
   async insertBatch(batch: BatchRecord, units: BatchUnitProvisionRecord[]): Promise<void> {
     const key = `${batch.brand}:${batch.batchId}`;
     if (this.batches.has(key)) {
@@ -172,6 +199,10 @@ export class InMemoryRepository implements Repository {
 
   async listBrandBatches(brand: string): Promise<BatchRecord[]> {
     return [...this.batches.values()].filter((b) => b.brand === brand);
+  }
+
+  async listAllBatches(): Promise<BatchRecord[]> {
+    return [...this.batches.values()];
   }
 
   async getBatchUnits(brand: string, batchId: string): Promise<BatchUnitProvisionRecord[]> {
@@ -228,6 +259,10 @@ export class InMemoryRepository implements Repository {
 
   async listOwnerUnits(owner: string): Promise<UnitRecord[]> {
     return [...this.units.values()].filter((u) => u.owner === owner);
+  }
+
+  async listAllUnits(): Promise<UnitRecord[]> {
+    return [...this.units.values()];
   }
 
   async recordScan(unitId: string, _ipHash: string, _uaHash: string): Promise<number> {
@@ -287,14 +322,173 @@ export class InMemoryRepository implements Repository {
   async getFileMetadata(hash: string): Promise<FileMetadataRecord | null> {
     return this.files.get(hash) ?? null;
   }
+
+  async upsertPasskeyWallet(wallet: PasskeyWalletRecord): Promise<void> {
+    this.passkeyWallets.set(wallet.credentialId, { ...wallet });
+  }
+
+  async getPasskeyWallet(credentialId: string): Promise<PasskeyWalletRecord | null> {
+    return this.passkeyWallets.get(credentialId) ?? null;
+  }
+
+  async getPasskeyWalletByAddress(walletAddress: string): Promise<PasskeyWalletRecord | null> {
+    for (const w of this.passkeyWallets.values()) {
+      if (w.walletAddress === walletAddress) {
+        return w;
+      }
+    }
+    return null;
+  }
+}
+
+/**
+ * Local file-backed repository extending InMemoryRepository for zero-Docker local development.
+ */
+export class JsonFileRepository extends InMemoryRepository {
+  private readonly filePath: string;
+
+  constructor(filePath = ".data/veritag-db.json") {
+    super();
+    this.filePath = filePath;
+    this.loadFromDisk();
+  }
+
+  private loadFromDisk(): void {
+    if (!existsSync(this.filePath)) return;
+    try {
+      const raw = JSON.parse(readFileSync(this.filePath, "utf8")) as Record<string, unknown>;
+      for (const b of (raw.brands as BrandRecord[] | undefined) ?? []) {
+        this.brands.set(b.address, b);
+      }
+      for (const sc of (raw.serviceCenters as string[] | undefined) ?? []) {
+        this.serviceCenters.add(sc);
+      }
+      for (const b of (raw.batches as BatchRecord[] | undefined) ?? []) {
+        this.batches.set(`${b.brand}:${b.batchId}`, b);
+      }
+      for (const u of (raw.batchUnits as BatchUnitProvisionRecord[] | undefined) ?? []) {
+        this.batchUnits.set(u.unitId, u);
+      }
+      for (const u of (raw.units as UnitRecord[] | undefined) ?? []) {
+        this.units.set(u.unitId, u);
+      }
+      for (const e of (raw.events as UnitEventRecord[] | undefined) ?? []) {
+        this.events.set(e.id, e);
+      }
+      for (const o of (raw.offers as TransferOfferCache[] | undefined) ?? []) {
+        this.offers.set(o.unitId, o);
+      }
+      for (const c of (raw.claims as ClaimRecord[] | undefined) ?? []) {
+        this.claims.set(`${c.unitId}:${c.claimId}`, c);
+      }
+      for (const f of (raw.files as FileMetadataRecord[] | undefined) ?? []) {
+        this.files.set(f.hash, f);
+      }
+      for (const w of (raw.passkeyWallets as PasskeyWalletRecord[] | undefined) ?? []) {
+        this.passkeyWallets.set(w.credentialId, w);
+      }
+    } catch {
+      // Ignore corrupt local state on boot
+    }
+  }
+
+  private flushToDisk(): void {
+    mkdirSync(dirname(this.filePath), { recursive: true });
+    const snapshot = {
+      brands: [...this.brands.values()],
+      serviceCenters: [...this.serviceCenters],
+      batches: [...this.batches.values()],
+      batchUnits: [...this.batchUnits.values()],
+      units: [...this.units.values()],
+      events: [...this.events.values()],
+      offers: [...this.offers.values()],
+      claims: [...this.claims.values()],
+      files: [...this.files.values()],
+      passkeyWallets: [...this.passkeyWallets.values()],
+    };
+    writeFileSync(this.filePath, JSON.stringify(snapshot, null, 2), "utf8");
+  }
+
+  override async upsertBrand(brand: BrandRecord): Promise<void> {
+    await super.upsertBrand(brand);
+    this.flushToDisk();
+  }
+
+  override async setServiceCenter(
+    brand: string,
+    serviceCenter: string,
+    authorized: boolean,
+  ): Promise<void> {
+    await super.setServiceCenter(brand, serviceCenter, authorized);
+    this.flushToDisk();
+  }
+
+  override async insertBatch(
+    batch: BatchRecord,
+    units: BatchUnitProvisionRecord[],
+  ): Promise<void> {
+    await super.insertBatch(batch, units);
+    this.flushToDisk();
+  }
+
+  override async purgeBatchSecrets(brand: string, batchId: string): Promise<void> {
+    await super.purgeBatchSecrets(brand, batchId);
+    this.flushToDisk();
+  }
+
+  override async markBatchRecalled(
+    brand: string,
+    batchId: string,
+    reasonHash: string,
+  ): Promise<void> {
+    await super.markBatchRecalled(brand, batchId, reasonHash);
+    this.flushToDisk();
+  }
+
+  override async upsertUnit(unit: UnitRecord): Promise<void> {
+    await super.upsertUnit(unit);
+    this.flushToDisk();
+  }
+
+  override async appendEvent(event: UnitEventRecord): Promise<void> {
+    await super.appendEvent(event);
+    this.flushToDisk();
+  }
+
+  override async setTransferOffer(offer: TransferOfferCache): Promise<void> {
+    await super.setTransferOffer(offer);
+    this.flushToDisk();
+  }
+
+  override async deleteTransferOffer(unitId: string): Promise<void> {
+    await super.deleteTransferOffer(unitId);
+    this.flushToDisk();
+  }
+
+  override async upsertClaim(claim: ClaimRecord): Promise<void> {
+    await super.upsertClaim(claim);
+    this.flushToDisk();
+  }
+
+  override async saveFileMetadata(file: FileMetadataRecord): Promise<void> {
+    await super.saveFileMetadata(file);
+    this.flushToDisk();
+  }
+
+  override async upsertPasskeyWallet(wallet: PasskeyWalletRecord): Promise<void> {
+    await super.upsertPasskeyWallet(wallet);
+    this.flushToDisk();
+  }
 }
 
 export class PostgresRepository implements Repository {
   private readonly pool: pg.Pool;
-  private readonly offers = new Map<string, TransferOfferCache>();
 
-  constructor(databaseUrl: string) {
-    this.pool = new pg.Pool({ connectionString: databaseUrl });
+  constructor(databaseUrlOrPool: string | pg.Pool) {
+    this.pool =
+      typeof databaseUrlOrPool === "string"
+        ? new pg.Pool({ connectionString: databaseUrlOrPool })
+        : databaseUrlOrPool;
   }
 
   async close(): Promise<void> {
@@ -343,6 +537,14 @@ export class PostgresRepository implements Repository {
       [brand, serviceCenter],
     );
     return Boolean(res.rows[0]?.authorized);
+  }
+
+  async listBrandServiceCenters(brand: string): Promise<string[]> {
+    const res = await this.pool.query(
+      `SELECT service_center FROM service_centers WHERE brand = $1 AND authorized = TRUE ORDER BY updated_at ASC`,
+      [brand],
+    );
+    return res.rows.map((row) => String(row.service_center));
   }
 
   async insertBatch(batch: BatchRecord, units: BatchUnitProvisionRecord[]): Promise<void> {
@@ -414,6 +616,21 @@ export class PostgresRepository implements Repository {
       `SELECT * FROM batches WHERE brand = $1 ORDER BY created_at DESC`,
       [brand],
     );
+    return res.rows.map((row) => ({
+      brand: String(row.brand),
+      batchId: String(row.batch_id),
+      merkleRoot: String(row.merkle_root),
+      warrantyMonths: Number(row.warranty_months),
+      productMetaHash: String(row.product_meta_hash),
+      unitCount: Number(row.unit_count),
+      recalled: Boolean(row.recalled),
+      recallReasonHash: row.recall_reason_hash ? String(row.recall_reason_hash) : null,
+      createdAt: new Date(String(row.created_at)).toISOString(),
+    }));
+  }
+
+  async listAllBatches(): Promise<BatchRecord[]> {
+    const res = await this.pool.query(`SELECT * FROM batches ORDER BY created_at DESC`);
     return res.rows.map((row) => ({
       brand: String(row.brand),
       batchId: String(row.batch_id),
@@ -549,6 +766,22 @@ export class PostgresRepository implements Repository {
     }));
   }
 
+  async listAllUnits(): Promise<UnitRecord[]> {
+    const res = await this.pool.query(`SELECT * FROM units ORDER BY activated_at DESC`);
+    return res.rows.map((row) => ({
+      unitId: String(row.unit_id),
+      brand: String(row.brand),
+      batchId: String(row.batch_id),
+      owner: String(row.owner),
+      status: String(row.status) as UnitRecord["status"],
+      activatedAt: Number(row.activated_at),
+      warrantyExpiry: Number(row.warranty_expiry),
+      claimsUsed: Number(row.claims_used),
+      duplicateAttempts: Number(row.duplicate_attempts),
+      scanCount: Number(row.scan_count),
+    }));
+  }
+
   async recordScan(unitId: string, ipHash: string, uaHash: string): Promise<number> {
     await this.pool.query(
       `INSERT INTO scans (unit_id, ip_hash, ua_hash) VALUES ($1, $2, $3)`,
@@ -605,15 +838,31 @@ export class PostgresRepository implements Repository {
   }
 
   async setTransferOffer(offer: TransferOfferCache): Promise<void> {
-    this.offers.set(offer.unitId, { ...offer });
+    await this.pool.query(
+      `INSERT INTO transfer_offers (unit_id, code_hash, expires_at, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (unit_id) DO UPDATE
+       SET code_hash = EXCLUDED.code_hash, expires_at = EXCLUDED.expires_at, updated_at = NOW()`,
+      [offer.unitId, offer.codeHash, offer.expiresAt],
+    );
   }
 
   async getTransferOffer(unitId: string): Promise<TransferOfferCache | null> {
-    return this.offers.get(unitId) ?? null;
+    const res = await this.pool.query(
+      `SELECT unit_id, code_hash, expires_at FROM transfer_offers WHERE unit_id = $1`,
+      [unitId],
+    );
+    const row = res.rows[0];
+    if (!row) return null;
+    return {
+      unitId: String(row.unit_id),
+      codeHash: String(row.code_hash),
+      expiresAt: Number(row.expires_at),
+    };
   }
 
   async deleteTransferOffer(unitId: string): Promise<void> {
-    this.offers.delete(unitId);
+    await this.pool.query(`DELETE FROM transfer_offers WHERE unit_id = $1`, [unitId]);
   }
 
   async upsertClaim(claim: ClaimRecord): Promise<void> {
@@ -703,6 +952,63 @@ export class PostgresRepository implements Repository {
       mime: String(row.mime),
       size: Number(row.size),
       storageKey: String(row.storage_key),
+      createdAt: new Date(String(row.created_at)).toISOString(),
+    };
+  }
+
+  async upsertPasskeyWallet(wallet: PasskeyWalletRecord): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO passkey_wallets (credential_id, wallet_address, public_key_hex, salt_hex, recovery_address, deployed, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (credential_id) DO UPDATE
+       SET wallet_address = EXCLUDED.wallet_address,
+           public_key_hex = EXCLUDED.public_key_hex,
+           recovery_address = EXCLUDED.recovery_address,
+           deployed = EXCLUDED.deployed`,
+      [
+        wallet.credentialId,
+        wallet.walletAddress,
+        wallet.publicKeyHex,
+        wallet.saltHex,
+        wallet.recoveryAddress,
+        wallet.deployed,
+        wallet.createdAt,
+      ],
+    );
+  }
+
+  async getPasskeyWallet(credentialId: string): Promise<PasskeyWalletRecord | null> {
+    const res = await this.pool.query(
+      `SELECT * FROM passkey_wallets WHERE credential_id = $1`,
+      [credentialId],
+    );
+    const row = res.rows[0];
+    if (!row) return null;
+    return {
+      credentialId: String(row.credential_id),
+      walletAddress: String(row.wallet_address),
+      publicKeyHex: String(row.public_key_hex),
+      saltHex: String(row.salt_hex),
+      recoveryAddress: row.recovery_address ? String(row.recovery_address) : null,
+      deployed: Boolean(row.deployed),
+      createdAt: new Date(String(row.created_at)).toISOString(),
+    };
+  }
+
+  async getPasskeyWalletByAddress(walletAddress: string): Promise<PasskeyWalletRecord | null> {
+    const res = await this.pool.query(
+      `SELECT * FROM passkey_wallets WHERE wallet_address = $1 LIMIT 1`,
+      [walletAddress],
+    );
+    const row = res.rows[0];
+    if (!row) return null;
+    return {
+      credentialId: String(row.credential_id),
+      walletAddress: String(row.wallet_address),
+      publicKeyHex: String(row.public_key_hex),
+      saltHex: String(row.salt_hex),
+      recoveryAddress: row.recovery_address ? String(row.recovery_address) : null,
+      deployed: Boolean(row.deployed),
       createdAt: new Date(String(row.created_at)).toISOString(),
     };
   }

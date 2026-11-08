@@ -4,6 +4,8 @@ export interface BackendConfig {
   horizonUrl: string;
   networkPassphrase: string;
   registryContractId: string;
+  accountFactoryContractId: string;
+  passkeyAccountWasmHash: string;
   registryAdminSecret: string;
   sponsorSecret: string;
   databaseUrl: string;
@@ -14,6 +16,7 @@ export interface BackendConfig {
   appBaseUrl: string;
   s3Endpoint: string;
   s3Bucket: string;
+  localStorageDir: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): BackendConfig {
@@ -24,6 +27,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BackendConfig 
     networkPassphrase: env.NETWORK_PASSPHRASE ?? "Test SDF Network ; September 2015",
     registryContractId:
       env.REGISTRY_CONTRACT_ID ?? "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
+    accountFactoryContractId:
+      env.ACCOUNT_FACTORY_CONTRACT_ID ??
+      "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
+    passkeyAccountWasmHash:
+      env.PASSKEY_ACCOUNT_WASM_HASH ??
+      "d1fac387cf017ab59c6aa425090685d55d624d759aa1a6d808cce03b38cf263f",
     registryAdminSecret: env.REGISTRY_ADMIN_SECRET ?? "",
     sponsorSecret: env.SPONSOR_SECRET ?? "",
     databaseUrl: env.DATABASE_URL ?? "postgres://veritag:veritag@localhost:5432/veritag",
@@ -34,5 +43,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BackendConfig 
     appBaseUrl: env.APP_BASE_URL ?? "http://localhost:3000",
     s3Endpoint: env.S3_ENDPOINT ?? "http://localhost:9000",
     s3Bucket: env.S3_BUCKET ?? "veritag-files",
+    localStorageDir: env.LOCAL_STORAGE_DIR ?? ".data/storage",
   };
 }

@@ -1,8 +1,10 @@
+import { Address, xdr } from "@stellar/stellar-sdk";
 import {
   computeLeaf,
   computeSecretHash,
   computeSerialHash,
   computeUnitId,
+  extractP256UncompressedPublicKey,
   hexToBytes32,
   sha256,
   verifyMerkleProof,
@@ -15,7 +17,13 @@ import { AuthService, SlidingWindowRateLimiter } from "../services/auth.js";
 import { buildProductionBatch } from "../services/merkle.js";
 import { formatPrintableExport, toCsvExport } from "../services/qr.js";
 import type { RelayerService } from "../services/relayer.js";
+import {
+  type SorobanTransactionService,
+  computeDeterministicPasskeyAddress,
+} from "../services/soroban-tx.js";
+import { verifyBrandDomainToml } from "../services/stellar-toml.js";
 import type { ObjectStorageAdapter } from "../services/storage.js";
+import type { TtlMaintenanceWorker } from "../services/ttl-worker.js";
 
 const SECONDS_PER_MONTH = 30 * 24 * 60 * 60;
 
@@ -26,6 +34,9 @@ export interface ApiDependencies {
   rateLimiter: SlidingWindowRateLimiter;
   storage: ObjectStorageAdapter;
   relayer: RelayerService;
+  sorobanTx: SorobanTransactionService;
+  ttlWorker: TtlMaintenanceWorker;
+  tomlFetch?: typeof fetch;
 }
 
 type AppVariables = {
@@ -69,7 +80,7 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
   };
 
   // ---------------------------------------------------------------------------
-  // Authentication (SEP-10 style challenge-response) & Brand Onboarding
+  // Authentication (SEP-10 Ed25519 + Soroban secp256r1 Passkey Smart Accounts)
   // ---------------------------------------------------------------------------
 
   router.post("/auth/challenge", async (c) => {
@@ -90,17 +101,116 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
     const schema = z.object({
       nonce: z.string().min(8),
       signature: z.string().min(16),
+      passkeyAssertion: z
+        .object({
+          publicKeyHex: z.string().min(128),
+          authenticatorDataHex: z.string().optional(),
+          clientDataJsonBase64: z.string().optional(),
+        })
+        .optional(),
     });
     const parsed = schema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
       return c.json({ error: "Invalid payload", details: parsed.error.flatten() }, 400);
     }
     try {
-      const token = deps.auth.verifyChallenge(parsed.data.nonce, parsed.data.signature);
+      const token = deps.auth.verifyChallenge(
+        parsed.data.nonce,
+        parsed.data.signature,
+        3600,
+        parsed.data.passkeyAssertion,
+      );
       return c.json({ token });
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : "Unauthorized" }, 401);
     }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Passkey Smart Account Wallet Factory & Lookup
+  // ---------------------------------------------------------------------------
+
+  router.post("/wallets/passkey", async (c) => {
+    const schema = z.object({
+      credentialId: z.string().min(4).max(512),
+      publicKeyHex: z.string().min(128).max(256),
+      recoveryAddress: z.string().min(56).optional(),
+    });
+    const parsed = schema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) {
+      return c.json({ error: "Invalid passkey wallet payload", details: parsed.error.flatten() }, 400);
+    }
+
+    let pubKeyBuf: Buffer;
+    try {
+      pubKeyBuf = extractP256UncompressedPublicKey(Buffer.from(parsed.data.publicKeyHex, "hex"));
+    } catch (err) {
+      return c.json(
+        { error: err instanceof Error ? err.message : "InvalidPasskeyPublicKey" },
+        400,
+      );
+    }
+
+    const { walletAddress, salt } = computeDeterministicPasskeyAddress(
+      deps.config.accountFactoryContractId,
+      parsed.data.credentialId,
+      deps.config.networkPassphrase,
+    );
+
+    const deployReceipt = await deps.sorobanTx.relayContractCall({
+      contractId: deps.config.accountFactoryContractId,
+      method: "deploy",
+      args: [
+        xdr.ScVal.scvBytes(salt),
+        xdr.ScVal.scvBytes(Buffer.from(parsed.data.credentialId, "utf8")),
+        xdr.ScVal.scvBytes(pubKeyBuf),
+        parsed.data.recoveryAddress
+          ? xdr.ScVal.scvVec([Address.fromString(parsed.data.recoveryAddress).toScVal()])
+          : xdr.ScVal.scvVec([]),
+      ],
+    });
+
+    const record = {
+      credentialId: parsed.data.credentialId,
+      walletAddress,
+      publicKeyHex: pubKeyBuf.toString("hex"),
+      saltHex: salt.toString("hex"),
+      recoveryAddress: parsed.data.recoveryAddress ?? null,
+      deployed: true,
+      createdAt: new Date().toISOString(),
+    };
+    await deps.repo.upsertPasskeyWallet(record);
+
+    const token = deps.auth.signToken(walletAddress);
+    return c.json({ wallet: record, deployTxHash: deployReceipt.txHash, token }, 201);
+  });
+
+  router.get("/wallets/passkey/:credentialId", async (c) => {
+    const credentialId = c.req.param("credentialId");
+    const wallet = await deps.repo.getPasskeyWallet(credentialId);
+    if (!wallet) {
+      return c.json({ error: "PasskeyWalletNotFound" }, 404);
+    }
+    const token = deps.auth.signToken(wallet.walletAddress);
+    return c.json({ wallet, token });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Brand Onboarding, stellar.toml Domain Verification & Service Centers
+  // ---------------------------------------------------------------------------
+
+  router.get("/brands/me", requireAuth, async (c) => {
+    const caller = c.get("callerAccount");
+    const [brand, serviceCenters, batches] = await Promise.all([
+      deps.repo.getBrand(caller),
+      deps.repo.listBrandServiceCenters(caller),
+      deps.repo.listBrandBatches(caller),
+    ]);
+    return c.json({
+      brand,
+      serviceCenters,
+      batchCount: batches.length,
+    });
   });
 
   router.post("/brands/register", requireAuth, async (c) => {
@@ -113,14 +223,58 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
       return c.json({ error: "Invalid brand payload", details: parsed.error.flatten() }, 400);
     }
     const caller = c.get("callerAccount");
+    const existing = await deps.repo.getBrand(caller);
+    const verified = parsed.data.verified ?? existing?.verified ?? false;
+
     await deps.repo.upsertBrand({
       address: caller,
       admin: caller,
       domain: parsed.data.domain,
-      verified: parsed.data.verified ?? false,
-      createdAt: new Date().toISOString(),
+      verified,
+      createdAt: existing?.createdAt ?? new Date().toISOString(),
     });
-    return c.json({ address: caller, domain: parsed.data.domain }, 201);
+    return c.json({ address: caller, domain: parsed.data.domain, verified }, 201);
+  });
+
+  router.post("/brands/verify-domain", requireAuth, async (c) => {
+    const caller = c.get("callerAccount");
+    const brand = await deps.repo.getBrand(caller);
+    if (!brand) {
+      return c.json({ error: "BrandNotFound" }, 404);
+    }
+
+    const tomlCheck = await verifyBrandDomainToml({
+      domain: brand.domain,
+      brandAddress: caller,
+      fetchImpl: deps.tomlFetch,
+    });
+
+    if (!tomlCheck.verified) {
+      return c.json(
+        {
+          verified: false,
+          domain: brand.domain,
+          error: tomlCheck.error ?? "DomainVerificationFailed",
+        },
+        422,
+      );
+    }
+
+    await deps.repo.upsertBrand({ ...brand, verified: true });
+
+    const txReceipt = await deps.sorobanTx.relayContractCall({
+      contractId: deps.config.registryContractId,
+      method: "verify_brand",
+      args: [Address.fromString(caller).toScVal(), xdr.ScVal.scvBool(true)],
+      useAdminSigner: true,
+    });
+
+    return c.json({
+      verified: true,
+      domain: brand.domain,
+      matchedField: tomlCheck.matchedField,
+      txHash: txReceipt.txHash,
+    });
   });
 
   router.post("/brands/service-centers", requireAuth, async (c) => {
@@ -393,6 +547,7 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
     const batchId = c.req.param("id") ?? "";
     const format = c.req.query("format") ?? "json";
     const purgeAfterExport = c.req.query("purge") === "true";
+    const includeQrSvg = c.req.query("qrSvg") !== "false";
 
     const batch = await deps.repo.getBatch(caller, batchId);
     if (!batch) {
@@ -405,6 +560,7 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
         units,
         deps.config.appBaseUrl,
         deps.config.jwtSecret,
+        includeQrSvg,
       );
 
       if (purgeAfterExport) {
@@ -885,7 +1041,7 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
   });
 
   // ---------------------------------------------------------------------------
-  // Off-chain Document Storage & Fee-Bump Transaction Sponsorship
+  // Off-chain Document Storage (Upload & Content-Addressed Download)
   // ---------------------------------------------------------------------------
 
   router.post("/files", requireAuth, async (c) => {
@@ -917,15 +1073,48 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
     return c.json(meta, 201);
   });
 
+  router.get("/files/:hash", async (c) => {
+    const hash = c.req.param("hash");
+    if (!/^[0-9a-fA-F]{64}$/.test(hash)) {
+      return c.json({ error: "Invalid file hash" }, 400);
+    }
+    const meta = await deps.repo.getFileMetadata(hash.toLowerCase());
+    if (!meta) {
+      return c.json({ error: "FileNotFound" }, 404);
+    }
+    const content = await deps.storage.get(meta.storageKey);
+    if (!content) {
+      return c.json({ error: "FileBlobMissing" }, 404);
+    }
+
+    return new Response(Buffer.from(content), {
+      status: 200,
+      headers: {
+        "Content-Type": meta.mime,
+        "Content-Length": String(meta.size),
+        "X-Content-Type-Options": "nosniff",
+        "Content-Disposition": `attachment; filename="${meta.hash}"`,
+      },
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Fee-Bump Sponsorship, Soroban RPC Submission & TTL Maintenance
+  // ---------------------------------------------------------------------------
+
   router.post("/sponsor", requireAuth, async (c) => {
     const caller = c.get("callerAccount");
     const ip = getCallerIp(c);
-    if (!deps.rateLimiter.allow(`sponsor:${caller}`) || !deps.rateLimiter.allow(`sponsor-ip:${ip}`)) {
+    if (
+      !deps.rateLimiter.allow(`sponsor:${caller}`) ||
+      !deps.rateLimiter.allow(`sponsor-ip:${ip}`)
+    ) {
       return c.json({ error: "RateLimitExceeded" }, 429);
     }
 
     const schema = z.object({
       innerTxXdr: z.string().min(16),
+      submit: z.boolean().optional(),
     });
     const parsed = schema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
@@ -938,12 +1127,22 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
         callerAccount: caller,
         callerIp: ip,
       });
+
+      if (parsed.data.submit) {
+        const submission = await deps.sorobanTx.submitSponsoredEnvelope(sponsored.feeBumpTxXdr);
+        return c.json({ ...sponsored, submission });
+      }
       return c.json(sponsored);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "SponsorshipFailed";
       const code = msg === "SponsorQuotaExceeded" ? 429 : 400;
       return c.json({ error: msg }, code);
     }
+  });
+
+  router.post("/maintenance/ttl-sweep", requireAuth, async (c) => {
+    const report = await deps.ttlWorker.runSweep();
+    return c.json(report);
   });
 
   return router;

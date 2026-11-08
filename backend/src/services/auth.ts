@@ -1,5 +1,6 @@
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHmac, createPublicKey, randomBytes, timingSafeEqual, verify } from "node:crypto";
 import { Keypair, StrKey } from "@stellar/stellar-sdk";
+import { base64UrlEncode, sha256 } from "@veritag/sdk";
 
 export interface AuthTokenPayload {
   sub: string;
@@ -10,9 +11,21 @@ export interface AuthTokenPayload {
 export interface ChallengeRecord {
   nonce: string;
   account: string;
+  challengeHashHex: string;
   message: string;
   expiresAt: number;
 }
+
+export interface PasskeyAssertionInput {
+  publicKeyHex: string;
+  authenticatorDataHex?: string;
+  clientDataJsonBase64?: string;
+}
+
+const P256_SPKI_PREFIX = Buffer.from(
+  "3059301306072a8648ce3d020106082a8648ce3d030107034200",
+  "hex",
+);
 
 export class AuthService {
   private readonly challenges = new Map<string, ChallengeRecord>();
@@ -23,26 +36,39 @@ export class AuthService {
   }
 
   /**
-   * Issues a SEP-10 style challenge message bound to `account` and a short-lived nonce.
+   * Issues a SEP-10 style challenge message bound to `account` (either a Stellar G... Ed25519
+   * public key or a Soroban C... passkey smart contract address) and a short-lived nonce.
    */
   createChallenge(account: string, ttlSeconds = 300): ChallengeRecord {
-    if (!StrKey.isValidEd25519PublicKey(account)) {
-      throw new Error("Invalid Stellar Ed25519 public key");
+    if (!StrKey.isValidEd25519PublicKey(account) && !StrKey.isValidContract(account)) {
+      throw new Error("Invalid Stellar account or Soroban contract address");
     }
     const nonce = randomBytes(24).toString("hex");
     const expiresAt = Math.floor(Date.now() / 1000) + ttlSeconds;
     const message = `Veritag Authentication\nAccount: ${account}\nNonce: ${nonce}\nExpires: ${expiresAt}`;
+    const challengeHashHex = sha256(message).toString("hex");
 
-    const record: ChallengeRecord = { nonce, account, message, expiresAt };
+    const record: ChallengeRecord = {
+      nonce,
+      account,
+      challengeHashHex,
+      message,
+      expiresAt,
+    };
     this.challenges.set(nonce, record);
     return record;
   }
 
   /**
-   * Verifies a hex-encoded or base64-encoded Ed25519 signature over the challenge message,
-   * burns the challenge nonce, and returns a signed HS256 bearer token.
+   * Verifies an Ed25519 signature (for G... accounts) or a P-256 / WebAuthn signature
+   * (for C... passkey smart contract accounts), burns the challenge nonce, and returns a JWT.
    */
-  verifyChallenge(nonce: string, signatureInput: string, tokenTtlSeconds = 3600): string {
+  verifyChallenge(
+    nonce: string,
+    signatureInput: string,
+    tokenTtlSeconds = 3600,
+    passkeyAssertion?: PasskeyAssertionInput,
+  ): string {
     const challenge = this.challenges.get(nonce);
     if (!challenge) {
       throw new Error("ChallengeNotFound");
@@ -58,9 +84,48 @@ export class AuthService {
       ? Buffer.from(signatureInput, "hex")
       : Buffer.from(signatureInput, "base64");
 
-    const kp = Keypair.fromPublicKey(challenge.account);
-    const valid = kp.verify(Buffer.from(challenge.message, "utf8"), sigBytes);
-    if (!valid) {
+    if (StrKey.isValidEd25519PublicKey(challenge.account)) {
+      const kp = Keypair.fromPublicKey(challenge.account);
+      const valid = kp.verify(Buffer.from(challenge.message, "utf8"), sigBytes);
+      if (!valid) {
+        throw new Error("InvalidSignature");
+      }
+      return this.signToken(challenge.account, tokenTtlSeconds);
+    }
+
+    // Soroban C... Passkey Smart Account verification via secp256r1
+    if (!passkeyAssertion?.publicKeyHex) {
+      throw new Error("MissingPasskeyPublicKey");
+    }
+    const pubKeyBuf = Buffer.from(passkeyAssertion.publicKeyHex, "hex");
+    if (pubKeyBuf.length !== 65 || pubKeyBuf[0] !== 0x04) {
+      throw new Error("InvalidPasskeyPublicKey");
+    }
+
+    const spkiDer = Buffer.concat([P256_SPKI_PREFIX, pubKeyBuf]);
+    const keyObject = createPublicKey({ key: spkiDer, format: "der", type: "spki" });
+
+    let signedPayload: Buffer;
+    if (passkeyAssertion.authenticatorDataHex && passkeyAssertion.clientDataJsonBase64) {
+      const authData = Buffer.from(passkeyAssertion.authenticatorDataHex, "hex");
+      const clientDataJson = Buffer.from(passkeyAssertion.clientDataJsonBase64, "base64");
+      const expectedChallengeB64 = base64UrlEncode(Buffer.from(challenge.challengeHashHex, "hex"));
+      if (!clientDataJson.toString("utf8").includes(`"challenge":"${expectedChallengeB64}"`)) {
+        throw new Error("ChallengeMismatch");
+      }
+      const clientDataHash = sha256(clientDataJson);
+      signedPayload = Buffer.concat([authData, clientDataHash]);
+    } else {
+      signedPayload = Buffer.from(challenge.message, "utf8");
+    }
+
+    const validP256 = verify(
+      "sha256",
+      signedPayload,
+      { key: keyObject, dsaEncoding: "ieee-p1363" },
+      sigBytes,
+    );
+    if (!validP256) {
       throw new Error("InvalidSignature");
     }
 
@@ -95,7 +160,9 @@ export class AuthService {
       throw new Error("InvalidTokenSignature");
     }
 
-    const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as AuthTokenPayload;
+    const decoded = JSON.parse(
+      Buffer.from(payload, "base64url").toString("utf8"),
+    ) as AuthTokenPayload;
     const now = Math.floor(Date.now() / 1000);
     if (typeof decoded.sub !== "string" || typeof decoded.exp !== "number" || now > decoded.exp) {
       throw new Error("TokenExpired");

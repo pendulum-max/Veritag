@@ -3,7 +3,7 @@ import { InMemoryIndexerWriter, PostgresIndexerWriter } from "./writer.js";
 
 const rpcUrl = process.env.SOROBAN_RPC_URL ?? "https://soroban-testnet.stellar.org";
 const contractId =
-  process.env.REGISTRY_CONTRACT_ID ?? "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
+  process.env.REGISTRY_CONTRACT_ID ?? "CCOY35YSS7ICXGYOSZOF4QXZP5OG2MFSEFXZUYJEFUUXG5HHZ3ZUZQND";
 const databaseUrl =
   process.env.DATABASE_URL ?? "postgres://veritag:veritag@localhost:5432/veritag";
 const pollIntervalMs = Number(process.env.INDEXER_POLL_INTERVAL_MS ?? 5000);

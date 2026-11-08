@@ -26,10 +26,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BackendConfig 
     horizonUrl: env.HORIZON_URL ?? "https://horizon-testnet.stellar.org",
     networkPassphrase: env.NETWORK_PASSPHRASE ?? "Test SDF Network ; September 2015",
     registryContractId:
-      env.REGISTRY_CONTRACT_ID ?? "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
+      env.REGISTRY_CONTRACT_ID ?? "CCOY35YSS7ICXGYOSZOF4QXZP5OG2MFSEFXZUYJEFUUXG5HHZ3ZUZQND",
     accountFactoryContractId:
       env.ACCOUNT_FACTORY_CONTRACT_ID ??
-      "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
+      "CDIHHVXIPD4GGRJ24375YZ5T6LIIH4USUWA2WZ5VJAJ4KNL7LFMW63C4",
     passkeyAccountWasmHash:
       env.PASSKEY_ACCOUNT_WASM_HASH ??
       "d1fac387cf017ab59c6aa425090685d55d624d759aa1a6d808cce03b38cf263f",

@@ -27,14 +27,14 @@ jobs:
       - name: Cache Cargo registry and target
         uses: Swatinem/rust-cache@v2
 
+      - name: Build WASM release artifacts
+        run: cargo build --workspace --target wasm32v1-none --release
+
       - name: Check Rust Clippy lints
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Run Soroban contract unit tests
         run: cargo test --workspace
-
-      - name: Build WASM release artifacts
-        run: cargo build --workspace --target wasm32v1-none --release
 
   typescript:
     name: SDK, Backend, Indexer & Web (TypeScript)
@@ -45,13 +45,11 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: Install dependencies

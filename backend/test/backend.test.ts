@@ -569,5 +569,34 @@ describe("@veritag/backend API & services", () => {
       body: JSON.stringify({ innerTxXdr: footprintTx.toXDR() }),
     });
     expect(rateLimitedRes.status).toBe(429);
+
+    // Inline signedTxXdr sponsorship and rate-limit headers on write routes
+    const freshLimiter = new SlidingWindowRateLimiter(10, 60_000);
+    const freshApp = createApp({
+      config: { ...loadConfig({}), sponsorSecret: sponsorKp.secret() },
+      rateLimiter: freshLimiter,
+      relayer: new StellarFeeSponsorService({
+        sponsorSecret: sponsorKp.secret(),
+        networkPassphrase: Networks.TESTNET,
+        quota: { maxStroopsPerUserWindow: 25_000 },
+      }),
+    });
+    const freshToken = await authenticateKeypair(freshApp, userKp);
+    const regWithSignedTx = await freshApp.request("/v1/brands/register", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${freshToken}`,
+      },
+      body: JSON.stringify({
+        domain: "chronos-watches.swiss",
+        verified: true,
+        signedTxXdr: footprintTx.toXDR(),
+      }),
+    });
+    expect(regWithSignedTx.status).toBe(201);
+    expect(regWithSignedTx.headers.get("X-RateLimit-Limit")).toBe("10");
+    const regBody = (await regWithSignedTx.json()) as { sponsoredTxHash?: string };
+    expect(typeof regBody.sponsoredTxHash).toBe("string");
   });
 });

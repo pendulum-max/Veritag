@@ -13,7 +13,11 @@ import { Hono, type Context } from "hono";
 import { z } from "zod";
 import type { BackendConfig } from "../config.js";
 import type { Repository, UnitRecord } from "../db/repository.js";
-import { AuthService, SlidingWindowRateLimiter } from "../services/auth.js";
+import {
+  AuthService,
+  type PasskeyAssertionInput,
+  SlidingWindowRateLimiter,
+} from "../services/auth.js";
 import { buildProductionBatch } from "../services/merkle.js";
 import { formatPrintableExport, toCsvExport } from "../services/qr.js";
 import type { RelayerService } from "../services/relayer.js";
@@ -79,11 +83,43 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
     }
   };
 
+  const rateLimitWrite = (bucketPrefix: string) => {
+    return async (c: Context<{ Variables: AppVariables }>, next: () => Promise<void>) => {
+      const caller = c.get("callerAccount") || getCallerIp(c);
+      const decision = deps.rateLimiter.check(`${bucketPrefix}:${caller}`);
+      c.header("X-RateLimit-Limit", String(decision.limit));
+      c.header("X-RateLimit-Remaining", String(decision.remaining));
+      c.header("X-RateLimit-Reset", String(decision.resetAtSec));
+      if (!decision.allowed) {
+        return c.json({ error: "RateLimitExceeded" }, 429);
+      }
+      await next();
+    };
+  };
+
+  const sponsorOptionalClientTx = async (
+    signedTxXdr: string | undefined,
+    callerAccount: string,
+    callerIp: string,
+  ): Promise<{ sponsoredTxHash: string; feeBumpTxXdr: string } | null> => {
+    if (!signedTxXdr) return null;
+    const sponsored = await deps.relayer.sponsorFeeBump({
+      innerTxXdr: signedTxXdr,
+      callerAccount,
+      callerIp,
+    });
+    const submission = await deps.sorobanTx.submitSponsoredEnvelope(sponsored.feeBumpTxXdr);
+    return {
+      sponsoredTxHash: submission.txHash,
+      feeBumpTxXdr: sponsored.feeBumpTxXdr,
+    };
+  };
+
   // ---------------------------------------------------------------------------
   // Authentication (SEP-10 Ed25519 + Soroban secp256r1 Passkey Smart Accounts)
   // ---------------------------------------------------------------------------
 
-  router.post("/auth/challenge", async (c) => {
+  router.post("/auth/challenge", rateLimitWrite("auth-challenge"), async (c) => {
     const schema = z.object({ account: z.string().min(56) });
     const parsed = schema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
@@ -97,13 +133,13 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
     }
   });
 
-  router.post("/auth/verify", async (c) => {
+  router.post("/auth/verify", rateLimitWrite("auth-verify"), async (c) => {
     const schema = z.object({
       nonce: z.string().min(8),
       signature: z.string().min(16),
       passkeyAssertion: z
         .object({
-          publicKeyHex: z.string().min(128),
+          publicKeyHex: z.string().min(128).optional(),
           authenticatorDataHex: z.string().optional(),
           clientDataJsonBase64: z.string().optional(),
         })
@@ -114,11 +150,36 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
       return c.json({ error: "Invalid payload", details: parsed.error.flatten() }, 400);
     }
     try {
+      const pending = deps.auth.peekChallenge(parsed.data.nonce);
+      let assertion: PasskeyAssertionInput | undefined = parsed.data.passkeyAssertion
+        ? {
+            publicKeyHex: parsed.data.passkeyAssertion.publicKeyHex ?? "",
+            authenticatorDataHex: parsed.data.passkeyAssertion.authenticatorDataHex,
+            clientDataJsonBase64: parsed.data.passkeyAssertion.clientDataJsonBase64,
+          }
+        : undefined;
+
+      if (pending?.account.startsWith("C")) {
+        const registeredWallet = await deps.repo.getPasskeyWalletByAddress(pending.account);
+        if (registeredWallet) {
+          if (
+            assertion?.publicKeyHex &&
+            assertion.publicKeyHex.toLowerCase() !== registeredWallet.publicKeyHex.toLowerCase()
+          ) {
+            return c.json({ error: "PasskeyPublicKeyMismatch" }, 401);
+          }
+          assertion = {
+            ...assertion,
+            publicKeyHex: registeredWallet.publicKeyHex,
+          };
+        }
+      }
+
       const token = deps.auth.verifyChallenge(
         parsed.data.nonce,
         parsed.data.signature,
         3600,
-        parsed.data.passkeyAssertion,
+        assertion?.publicKeyHex ? assertion : undefined,
       );
       return c.json({ token });
     } catch (err) {
@@ -130,7 +191,7 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
   // Passkey Smart Account Wallet Factory & Lookup
   // ---------------------------------------------------------------------------
 
-  router.post("/wallets/passkey", async (c) => {
+  router.post("/wallets/passkey", rateLimitWrite("passkey-wallet"), async (c) => {
     const schema = z.object({
       credentialId: z.string().min(4).max(512),
       publicKeyHex: z.string().min(128).max(256),
@@ -213,10 +274,11 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
     });
   });
 
-  router.post("/brands/register", requireAuth, async (c) => {
+  router.post("/brands/register", requireAuth, rateLimitWrite("brand-write"), async (c) => {
     const schema = z.object({
       domain: z.string().min(3).max(253),
       verified: z.boolean().optional(),
+      signedTxXdr: z.string().min(16).optional(),
     });
     const parsed = schema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
@@ -226,6 +288,12 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
     const existing = await deps.repo.getBrand(caller);
     const verified = parsed.data.verified ?? existing?.verified ?? false;
 
+    const sponsored = await sponsorOptionalClientTx(
+      parsed.data.signedTxXdr,
+      caller,
+      getCallerIp(c),
+    );
+
     await deps.repo.upsertBrand({
       address: caller,
       admin: caller,
@@ -233,10 +301,18 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
       verified,
       createdAt: existing?.createdAt ?? new Date().toISOString(),
     });
-    return c.json({ address: caller, domain: parsed.data.domain, verified }, 201);
+    return c.json(
+      {
+        address: caller,
+        domain: parsed.data.domain,
+        verified,
+        ...(sponsored ? { sponsoredTxHash: sponsored.sponsoredTxHash } : {}),
+      },
+      201,
+    );
   });
 
-  router.post("/brands/verify-domain", requireAuth, async (c) => {
+  router.post("/brands/verify-domain", requireAuth, rateLimitWrite("brand-write"), async (c) => {
     const caller = c.get("callerAccount");
     const brand = await deps.repo.getBrand(caller);
     if (!brand) {
@@ -277,10 +353,11 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
     });
   });
 
-  router.post("/brands/service-centers", requireAuth, async (c) => {
+  router.post("/brands/service-centers", requireAuth, rateLimitWrite("brand-write"), async (c) => {
     const schema = z.object({
       serviceCenter: z.string().min(56),
       authorized: z.boolean().default(true),
+      signedTxXdr: z.string().min(16).optional(),
     });
     const parsed = schema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
@@ -291,11 +368,17 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
     if (!brand || !brand.verified) {
       return c.json({ error: "BrandNotVerified" }, 403);
     }
+    const sponsored = await sponsorOptionalClientTx(
+      parsed.data.signedTxXdr,
+      caller,
+      getCallerIp(c),
+    );
     await deps.repo.setServiceCenter(caller, parsed.data.serviceCenter, parsed.data.authorized);
     return c.json({
       brand: caller,
       serviceCenter: parsed.data.serviceCenter,
       authorized: parsed.data.authorized,
+      ...(sponsored ? { sponsoredTxHash: sponsored.sponsoredTxHash } : {}),
     });
   });
 
@@ -483,7 +566,7 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
     return c.json({ batches });
   });
 
-  router.post("/brands/batches", requireAuth, async (c) => {
+  router.post("/brands/batches", requireAuth, rateLimitWrite("brand-write"), async (c) => {
     const caller = c.get("callerAccount");
     const brand = await deps.repo.getBrand(caller);
     if (!brand) {
@@ -499,6 +582,7 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
       productMeta: z.union([z.string().min(1), z.record(z.unknown())]),
       count: z.number().int().min(1).max(50_000).optional(),
       serials: z.array(z.string().min(1)).max(50_000).optional(),
+      signedTxXdr: z.string().min(16).optional(),
     });
     const parsed = schema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
@@ -506,6 +590,11 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
     }
 
     try {
+      const sponsored = await sponsorOptionalClientTx(
+        parsed.data.signedTxXdr,
+        caller,
+        getCallerIp(c),
+      );
       const built = buildProductionBatch({
         brand: caller,
         batchCode: parsed.data.batchCode,
@@ -520,6 +609,7 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
       return c.json(
         {
           batch: built.batch,
+          ...(sponsored ? { sponsoredTxHash: sponsored.sponsoredTxHash } : {}),
           contractCall: {
             contractId: deps.config.registryContractId,
             method: "commit_batch",
@@ -588,18 +678,20 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
     }
   });
 
-  router.post("/brands/recall", requireAuth, async (c) => {
+  router.post("/brands/recall", requireAuth, rateLimitWrite("brand-write"), async (c) => {
     const caller = c.get("callerAccount");
     const schema = z.discriminatedUnion("mode", [
       z.object({
         mode: z.literal("batch"),
         batchId: z.string().length(64),
         reason: z.string().min(3),
+        signedTxXdr: z.string().min(16).optional(),
       }),
       z.object({
         mode: z.literal("unit"),
         unitId: z.string().length(64),
         reason: z.string().min(3),
+        signedTxXdr: z.string().min(16).optional(),
       }),
     ]);
 
@@ -608,6 +700,11 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
       return c.json({ error: "Invalid recall request", details: parsed.error.flatten() }, 400);
     }
 
+    const sponsored = await sponsorOptionalClientTx(
+      parsed.data.signedTxXdr,
+      caller,
+      getCallerIp(c),
+    );
     const reasonHash = sha256(parsed.data.reason).toString("hex");
 
     if (parsed.data.mode === "batch") {
@@ -616,7 +713,12 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
         return c.json({ error: "BatchNotFound" }, 404);
       }
       await deps.repo.markBatchRecalled(caller, parsed.data.batchId, reasonHash);
-      return c.json({ recalled: true, batchId: parsed.data.batchId, reasonHash });
+      return c.json({
+        recalled: true,
+        batchId: parsed.data.batchId,
+        reasonHash,
+        ...(sponsored ? { sponsoredTxHash: sponsored.sponsoredTxHash } : {}),
+      });
     }
 
     const unit = await deps.repo.getUnit(parsed.data.unitId);
@@ -637,22 +739,26 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
       type: "unit_flagged",
       data: { reason_hash: reasonHash },
       ledger: Date.now(),
-      txHash: sha256(`flag:${unit.unitId}:${reasonHash}`).toString("hex"),
+      txHash:
+        sponsored?.sponsoredTxHash ??
+        sha256(`flag:${unit.unitId}:${reasonHash}`).toString("hex"),
       finalized: true,
       createdAt: new Date().toISOString(),
     });
-    return c.json({ flagged: true, unitId: unit.unitId, reasonHash });
+    return c.json({
+      flagged: true,
+      unitId: unit.unitId,
+      reasonHash,
+      ...(sponsored ? { sponsoredTxHash: sponsored.sponsoredTxHash } : {}),
+    });
   });
 
   // ---------------------------------------------------------------------------
   // Public Rate-Limited Unit Activation (First Sale / First Scan)
   // ---------------------------------------------------------------------------
 
-  router.post("/activate", async (c) => {
+  router.post("/activate", rateLimitWrite("activate"), async (c) => {
     const ip = getCallerIp(c);
-    if (!deps.rateLimiter.allow(`activate:${ip}`)) {
-      return c.json({ error: "RateLimitExceeded" }, 429);
-    }
 
     const schema = z.object({
       brand: z.string().min(56),
@@ -661,6 +767,7 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
       secret: z.string().min(1),
       firstOwner: z.string().min(56),
       proof: z.array(z.string().length(64)).optional(),
+      signedTxXdr: z.string().min(16).optional(),
     });
     const parsed = schema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
@@ -723,6 +830,12 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
       );
     }
 
+    const sponsored = await sponsorOptionalClientTx(
+      parsed.data.signedTxXdr,
+      firstOwner,
+      ip,
+    );
+
     const nowSec = Math.floor(Date.now() / 1000);
     const warrantyExpiry = nowSec + batch.warrantyMonths * SECONDS_PER_MONTH;
 
@@ -747,7 +860,7 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
       type: "unit_activated",
       data: { owner: firstOwner, warranty_expiry: warrantyExpiry },
       ledger: Date.now(),
-      txHash: sha256(`act:${unitIdHex}`).toString("hex"),
+      txHash: sponsored?.sponsoredTxHash ?? sha256(`act:${unitIdHex}`).toString("hex"),
       finalized: true,
       createdAt: new Date().toISOString(),
     });
@@ -758,6 +871,7 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
         owner: firstOwner,
         activatedAt: nowSec,
         warrantyExpiry,
+        ...(sponsored ? { sponsoredTxHash: sponsored.sponsoredTxHash } : {}),
       },
       201,
     );
@@ -767,12 +881,13 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
   // Resale Ownership & Warranty Transfer
   // ---------------------------------------------------------------------------
 
-  router.post("/transfer/offer", requireAuth, async (c) => {
+  router.post("/transfer/offer", requireAuth, rateLimitWrite("transfer"), async (c) => {
     const caller = c.get("callerAccount");
     const schema = z.object({
       unitId: z.string().length(64),
       ttlSeconds: z.number().int().min(60).max(7 * 86_400).default(86_400),
       codeHash: z.string().length(64).optional(),
+      signedTxXdr: z.string().min(16).optional(),
     });
     const parsed = schema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
@@ -794,6 +909,12 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
       return c.json({ error: `Unit${unit.status}` }, 409);
     }
 
+    const sponsored = await sponsorOptionalClientTx(
+      parsed.data.signedTxXdr,
+      caller,
+      getCallerIp(c),
+    );
+
     const generatedCode = parsed.data.codeHash
       ? null
       : sha256(`${unit.unitId}:${Date.now()}:${Math.random()}`).toString("hex").slice(0, 16).toUpperCase();
@@ -814,7 +935,9 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
       type: "transfer_offered",
       data: { code_hash: codeHash, expires_at: expiresAt },
       ledger: Date.now(),
-      txHash: sha256(`offer:${unit.unitId}:${expiresAt}`).toString("hex"),
+      txHash:
+        sponsored?.sponsoredTxHash ??
+        sha256(`offer:${unit.unitId}:${expiresAt}`).toString("hex"),
       finalized: true,
       createdAt: new Date().toISOString(),
     });
@@ -824,14 +947,16 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
       transferCode: generatedCode,
       codeHash,
       expiresAt,
+      ...(sponsored ? { sponsoredTxHash: sponsored.sponsoredTxHash } : {}),
     });
   });
 
-  router.post("/transfer/redeem", requireAuth, async (c) => {
+  router.post("/transfer/redeem", requireAuth, rateLimitWrite("transfer"), async (c) => {
     const caller = c.get("callerAccount");
     const schema = z.object({
       unitId: z.string().length(64),
       code: z.string().min(4),
+      signedTxXdr: z.string().min(16).optional(),
     });
     const parsed = schema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
@@ -861,6 +986,12 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
       return c.json({ error: "InvalidTransferCode" }, 400);
     }
 
+    const sponsored = await sponsorOptionalClientTx(
+      parsed.data.signedTxXdr,
+      caller,
+      getCallerIp(c),
+    );
+
     const previousOwner = unit.owner;
     await deps.repo.deleteTransferOffer(unit.unitId);
     await deps.repo.upsertUnit({ ...unit, owner: caller });
@@ -872,7 +1003,9 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
       type: "unit_transferred",
       data: { from: previousOwner, to: caller },
       ledger: Date.now(),
-      txHash: sha256(`xfer:${unit.unitId}:${caller}:${Date.now()}`).toString("hex"),
+      txHash:
+        sponsored?.sponsoredTxHash ??
+        sha256(`xfer:${unit.unitId}:${caller}:${Date.now()}`).toString("hex"),
       finalized: true,
       createdAt: new Date().toISOString(),
     });
@@ -882,6 +1015,7 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
       from: previousOwner,
       to: caller,
       warrantyExpiry: unit.warrantyExpiry,
+      ...(sponsored ? { sponsoredTxHash: sponsored.sponsoredTxHash } : {}),
     });
   });
 
@@ -898,11 +1032,12 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
     return c.json({ claims });
   });
 
-  router.post("/claims", requireAuth, async (c) => {
+  router.post("/claims", requireAuth, rateLimitWrite("claims"), async (c) => {
     const caller = c.get("callerAccount");
     const schema = z.object({
       unitId: z.string().length(64),
       serviceCenter: z.string().min(56),
+      signedTxXdr: z.string().min(16).optional(),
     });
     const parsed = schema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
@@ -937,6 +1072,12 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
       return c.json({ error: "ClaimLimitReached" }, 409);
     }
 
+    const sponsored = await sponsorOptionalClientTx(
+      parsed.data.signedTxXdr,
+      caller,
+      getCallerIp(c),
+    );
+
     const claimId = unit.claimsUsed + 1;
     await deps.repo.upsertUnit({ ...unit, claimsUsed: claimId });
     await deps.repo.upsertClaim({
@@ -956,15 +1097,25 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
       type: "claim_filed",
       data: { claim_id: claimId, service_center: parsed.data.serviceCenter },
       ledger: Date.now(),
-      txHash: sha256(`claim:${unit.unitId}:${claimId}`).toString("hex"),
+      txHash:
+        sponsored?.sponsoredTxHash ??
+        sha256(`claim:${unit.unitId}:${claimId}`).toString("hex"),
       finalized: true,
       createdAt: new Date().toISOString(),
     });
 
-    return c.json({ unitId: unit.unitId, claimId, outcome: "Pending" }, 201);
+    return c.json(
+      {
+        unitId: unit.unitId,
+        claimId,
+        outcome: "Pending",
+        ...(sponsored ? { sponsoredTxHash: sponsored.sponsoredTxHash } : {}),
+      },
+      201,
+    );
   });
 
-  router.post("/claims/:id/resolve", requireAuth, async (c) => {
+  router.post("/claims/:id/resolve", requireAuth, rateLimitWrite("claims"), async (c) => {
     const caller = c.get("callerAccount");
     const claimId = Number(c.req.param("id"));
     if (!Number.isInteger(claimId) || claimId <= 0) {
@@ -975,6 +1126,7 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
       unitId: z.string().length(64),
       outcome: z.enum(["Approved", "Rejected", "Repaired", "Replaced"]),
       reportHash: z.string().length(64),
+      signedTxXdr: z.string().min(16).optional(),
     });
     const parsed = schema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) {
@@ -1002,6 +1154,12 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
       return c.json({ error: "ServiceCenterNotAuthorized" }, 403);
     }
 
+    const sponsored = await sponsorOptionalClientTx(
+      parsed.data.signedTxXdr,
+      caller,
+      getCallerIp(c),
+    );
+
     const resolvedAt = Math.floor(Date.now() / 1000);
     await deps.repo.upsertClaim({
       ...claim,
@@ -1026,7 +1184,9 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
         report_hash: parsed.data.reportHash,
       },
       ledger: Date.now(),
-      txHash: sha256(`resolve:${unit.unitId}:${claimId}`).toString("hex"),
+      txHash:
+        sponsored?.sponsoredTxHash ??
+        sha256(`resolve:${unit.unitId}:${claimId}`).toString("hex"),
       finalized: true,
       createdAt: new Date().toISOString(),
     });
@@ -1037,6 +1197,7 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
       outcome: parsed.data.outcome,
       reportHash: parsed.data.reportHash,
       resolvedAt,
+      ...(sponsored ? { sponsoredTxHash: sponsored.sponsoredTxHash } : {}),
     });
   });
 
@@ -1044,7 +1205,7 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
   // Off-chain Document Storage (Upload & Content-Addressed Download)
   // ---------------------------------------------------------------------------
 
-  router.post("/files", requireAuth, async (c) => {
+  router.post("/files", requireAuth, rateLimitWrite("files"), async (c) => {
     const caller = c.get("callerAccount");
     const schema = z.object({
       contentBase64: z.string().min(1),
@@ -1140,7 +1301,7 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
     }
   });
 
-  router.post("/maintenance/ttl-sweep", requireAuth, async (c) => {
+  router.post("/maintenance/ttl-sweep", requireAuth, rateLimitWrite("maintenance"), async (c) => {
     const report = await deps.ttlWorker.runSweep();
     return c.json(report);
   });

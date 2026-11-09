@@ -59,6 +59,10 @@ export class AuthService {
     return record;
   }
 
+  peekChallenge(nonce: string): ChallengeRecord | undefined {
+    return this.challenges.get(nonce);
+  }
+
   /**
    * Verifies an Ed25519 signature (for G... accounts) or a P-256 / WebAuthn signature
    * (for C... passkey smart contract accounts), burns the challenge nonce, and returns a JWT.
@@ -171,6 +175,13 @@ export class AuthService {
   }
 }
 
+export interface RateLimitDecision {
+  allowed: boolean;
+  limit: number;
+  remaining: number;
+  resetAtSec: number;
+}
+
 export class SlidingWindowRateLimiter {
   private readonly hits = new Map<string, number[]>();
   private readonly maxHits: number;
@@ -181,15 +192,31 @@ export class SlidingWindowRateLimiter {
     this.windowMs = windowMs;
   }
 
-  allow(key: string, nowMs = Date.now()): boolean {
+  check(key: string, nowMs = Date.now()): RateLimitDecision {
     const cutoff = nowMs - this.windowMs;
     const existing = (this.hits.get(key) ?? []).filter((ts) => ts > cutoff);
     if (existing.length >= this.maxHits) {
       this.hits.set(key, existing);
-      return false;
+      const oldest = existing[0] ?? nowMs;
+      return {
+        allowed: false,
+        limit: this.maxHits,
+        remaining: 0,
+        resetAtSec: Math.ceil((oldest + this.windowMs) / 1000),
+      };
     }
     existing.push(nowMs);
     this.hits.set(key, existing);
-    return true;
+    const oldest = existing[0] ?? nowMs;
+    return {
+      allowed: true,
+      limit: this.maxHits,
+      remaining: Math.max(0, this.maxHits - existing.length),
+      resetAtSec: Math.ceil((oldest + this.windowMs) / 1000),
+    };
+  }
+
+  allow(key: string, nowMs = Date.now()): boolean {
+    return this.check(key, nowMs).allowed;
   }
 }

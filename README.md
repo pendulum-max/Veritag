@@ -4,6 +4,16 @@
 
 Veritag lets manufacturers commit production batches to the Stellar blockchain, lets buyers verify that a product is genuine by scanning a QR code, and turns the warranty into a transferable, tamper-proof record that follows the product through resale. No paper receipts, no lost warranty cards, no guessing whether the "sealed" item is a fake.
 
+---
+
+## Live Stellar Testnet Deployments
+
+| Component | Identifier / Contract Address | Stellar Expert Explorer |
+| :--- | :--- | :--- |
+| **`VeritagRegistry` Contract** | `CCOY35YSS7ICXGYOSZOF4QXZP5OG2MFSEFXZUYJEFUUXG5HHZ3ZUZQND` | [View Contract](https://stellar.expert/explorer/testnet/contract/CCOY35YSS7ICXGYOSZOF4QXZP5OG2MFSEFXZUYJEFUUXG5HHZ3ZUZQND) · [Init Tx](https://stellar.expert/explorer/testnet/tx/6c16aadf694ef1fcc6ba9586e40061de163da55aae1fda7c31f9f8d2c7e262bb) |
+| **`AccountFactory` Contract** | `CDIHHVXIPD4GGRJ24375YZ5T6LIIH4USUWA2WZ5VJAJ4KNL7LFMW63C4` | [View Contract](https://stellar.expert/explorer/testnet/contract/CDIHHVXIPD4GGRJ24375YZ5T6LIIH4USUWA2WZ5VJAJ4KNL7LFMW63C4) · [Deploy Tx](https://stellar.expert/explorer/testnet/tx/d93e386c94eb7d40bc385073bc82d3a7258aff39b1429a6527ef82e1bf091c72) |
+| **`PasskeyAccount` WASM Hash** | `d1fac387cf017ab59c6aa425090685d55d624d759aa1a6d808cce03b38cf263f` | [Upload Tx](https://stellar.expert/explorer/testnet/tx/54de23cbda151941c6416a869429c7d94c701ada6f01f64e6a763f7cbda4de19) |
+| **Testnet Admin / Deployer** | `GCFGKLCBV5IGJYGRR7FJNU53HFV5674PMQNNJT6HRAFGUAHZ7V3ZELXR` | [View Account](https://stellar.expert/explorer/testnet/account/GCFGKLCBV5IGJYGRR7FJNU53HFV5674PMQNNJT6HRAFGUAHZ7V3ZELXR) |
 
 ---
 
@@ -528,8 +538,10 @@ SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
 HORIZON_URL=https://horizon-testnet.stellar.org
 NETWORK_PASSPHRASE="Test SDF Network ; September 2015"
 
-# Contract
-REGISTRY_CONTRACT_ID=C...
+# Contracts (Stellar Testnet defaults)
+REGISTRY_CONTRACT_ID=CCOY35YSS7ICXGYOSZOF4QXZP5OG2MFSEFXZUYJEFUUXG5HHZ3ZUZQND
+ACCOUNT_FACTORY_CONTRACT_ID=CDIHHVXIPD4GGRJ24375YZ5T6LIIH4USUWA2WZ5VJAJ4KNL7LFMW63C4
+PASSKEY_ACCOUNT_WASM_HASH=d1fac387cf017ab59c6aa425090685d55d624d759aa1a6d808cce03b38cf263f
 
 # Accounts
 REGISTRY_ADMIN_SECRET=S...        # admin key used to verify brands (testnet only!)
@@ -549,7 +561,8 @@ S3_SECRET_KEY=...
 
 # Web
 NEXT_PUBLIC_API_URL=http://localhost:4000
-NEXT_PUBLIC_REGISTRY_CONTRACT_ID=C...
+NEXT_PUBLIC_REGISTRY_CONTRACT_ID=CCOY35YSS7ICXGYOSZOF4QXZP5OG2MFSEFXZUYJEFUUXG5HHZ3ZUZQND
+NEXT_PUBLIC_ACCOUNT_FACTORY_CONTRACT_ID=CDIHHVXIPD4GGRJ24375YZ5T6LIIH4USUWA2WZ5VJAJ4KNL7LFMW63C4
 NEXT_PUBLIC_SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
 ```
 
@@ -611,25 +624,25 @@ Playwright flows: verify page states, activation, transfer, claim.
 
 ## Roadmap
 
-- [ ] **Phase 1: Contract MVP.** Brand registration, direct mint, transfer, warranty check, unit tests.
-- [ ] **Phase 2: Verify page.** QR scan, `get_unit`, authentic / claimed / recalled states.
-- [ ] **Phase 3: Merkle batches.** Lazy activation, scratch-secret flow.
-- [ ] **Phase 4: Indexer.** Ownership history timeline and scan analytics.
-- [ ] **Phase 5: Claims.** Service-center roles and claim workflow.
-- [ ] **Phase 6: Onboarding.** Passkey wallets and fee sponsorship.
-- [ ] **Phase 7: Brand dashboard.** Batch tooling, recall management, analytics.
+- [x] **Phase 1: Contract MVP.** Brand registration, direct mint, transfer, warranty check, unit tests.
+- [x] **Phase 2: Verify page.** QR scan, `get_unit`, authentic / claimed / recalled states.
+- [x] **Phase 3: Merkle batches.** Lazy activation, scratch-secret flow.
+- [x] **Phase 4: Indexer.** Ownership history timeline, ledger backfill, and scan analytics.
+- [x] **Phase 5: Claims.** Service-center roles and claim workflow.
+- [x] **Phase 6: Onboarding.** WebAuthn `secp256r1` passkey smart wallets (`passkey-account` + `account-factory`) and fee sponsorship.
+- [x] **Phase 7: Brand dashboard.** Batch tooling, QR SVG sheet export, recall management, analytics.
 - [ ] **Phase 8: Hardware.** NFC signed-counter tag support.
 - [ ] **Phase 9: Pharma extensions.** Lot and expiry tracking, supply-chain custody events, regulator read access.
 - [ ] **Phase 10: Marketplaces.** Embeddable verification widget and API for resale platforms.
 
 ## Contributing
 
-Contributions are welcome. Please:
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for full local setup, testing, and Drips Stellar Wave contributor guidelines. Please:
 
 1. Open an issue to discuss significant changes first.
 2. Fork the repo and create a feature branch.
 3. Add tests for any contract or API change.
-4. Run `cargo fmt`, `cargo clippy`, and `pnpm lint` before submitting.
+4. Run `cargo test --workspace`, `cargo clippy`, `pnpm test`, and `pnpm lint` before submitting.
 5. Open a pull request with a clear description.
 
 Security issues should be reported privately; do not open public issues for vulnerabilities.

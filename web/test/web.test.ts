@@ -1,6 +1,13 @@
+import { Keypair, TransactionBuilder } from "@stellar/stellar-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerPasskeySmartWallet } from "../lib/passkey.js";
-import { getFileDownloadUrl, verifyProduct } from "../lib/stellar.js";
+import {
+  buildUnsignedRegistryTxXdr,
+  getFileDownloadUrl,
+  PUBLIC_CONFIG,
+  signRegistryTxWithSecret,
+  verifyProduct,
+} from "../lib/stellar.js";
 
 describe("@veritag/web verification & passkey wallet logic", () => {
   beforeEach(() => {
@@ -47,5 +54,20 @@ describe("@veritag/web verification & passkey wallet logic", () => {
 
     const fileUrl = getFileDownloadUrl("a".repeat(64));
     expect(fileUrl).toContain("/v1/files/" + "a".repeat(64));
+
+    const kp = Keypair.random();
+    const unsignedXdr = buildUnsignedRegistryTxXdr({
+      callerAddress: kp.publicKey(),
+      method: "commit_batch",
+    });
+    const signedXdr = signRegistryTxWithSecret(unsignedXdr, kp.secret());
+    const parsedTx = TransactionBuilder.fromXDR(signedXdr, PUBLIC_CONFIG.networkPassphrase);
+    expect(parsedTx.signatures.length).toBe(1);
+
+    const passkeyUnsignedXdr = buildUnsignedRegistryTxXdr({
+      callerAddress: cred.stellarSmartAddress,
+      method: "activate",
+    });
+    expect(passkeyUnsignedXdr.length).toBeGreaterThan(20);
   });
 });

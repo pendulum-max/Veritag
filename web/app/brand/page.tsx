@@ -24,7 +24,7 @@ interface PrintableTagRow {
 }
 
 export default function BrandDashboardPage() {
-  const { session, connectRoleKeypair, connectFreighter } = useWallet();
+  const { session, connectRoleKeypair, connectFreighter, signContractAction } = useWallet();
   const [domain, setDomain] = useState("chronos-watches.swiss");
   const [domainVerified, setDomainVerified] = useState(true);
   const [serviceCenterInput, setServiceCenterInput] = useState("");
@@ -111,13 +111,18 @@ export default function BrandDashboardPage() {
       return;
     }
     try {
+      const signedTxXdr = await signContractAction("register_brand");
       await fetch(`${PUBLIC_CONFIG.apiUrl}/v1/brands/register`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.token}`,
         },
-        body: JSON.stringify({ domain, verified: true }),
+        body: JSON.stringify({
+          domain,
+          verified: true,
+          ...(signedTxXdr ? { signedTxXdr } : {}),
+        }),
       });
       const verRes = await fetch(`${PUBLIC_CONFIG.apiUrl}/v1/brands/verify-domain`, {
         method: "POST",
@@ -142,6 +147,7 @@ export default function BrandDashboardPage() {
     if (!serviceCenterInput.trim()) return;
     if (session?.token) {
       try {
+        const signedTxXdr = await signContractAction("set_service_center");
         const res = await fetch(`${PUBLIC_CONFIG.apiUrl}/v1/brands/service-centers`, {
           method: "POST",
           headers: {
@@ -151,13 +157,16 @@ export default function BrandDashboardPage() {
           body: JSON.stringify({
             serviceCenter: serviceCenterInput.trim(),
             authorized: true,
+            ...(signedTxXdr ? { signedTxXdr } : {}),
           }),
         });
         if (res.ok) {
           setAuthorizedCenters((prev) =>
             prev.includes(serviceCenterInput.trim()) ? prev : [...prev, serviceCenterInput.trim()],
           );
-          setNotice(`Authorized service center ${serviceCenterInput.trim().slice(0, 12)}...`);
+          setNotice(
+            `Signed set_service_center and authorized ${serviceCenterInput.trim().slice(0, 12)}...`,
+          );
           setServiceCenterInput("");
           return;
         }
@@ -174,6 +183,7 @@ export default function BrandDashboardPage() {
     e.preventDefault();
     if (session?.token) {
       try {
+        const signedTxXdr = await signContractAction("commit_batch");
         // Ensure brand is registered first
         await fetch(`${PUBLIC_CONFIG.apiUrl}/v1/brands/register`, {
           method: "POST",
@@ -195,6 +205,7 @@ export default function BrandDashboardPage() {
             warrantyMonths,
             productMeta: { model: productSku, domain },
             count: unitCount,
+            ...(signedTxXdr ? { signedTxXdr } : {}),
           }),
         });
         if (res.ok) {
@@ -206,6 +217,7 @@ export default function BrandDashboardPage() {
               warrantyMonths: number;
               recalled: boolean;
             };
+            sponsoredTxHash?: string;
           };
           setBatches((prev) => [
             {
@@ -220,7 +232,9 @@ export default function BrandDashboardPage() {
             ...prev,
           ]);
           setNotice(
-            `Committed batch ${batchCode} (${data.batch.unitCount} units) with Merkle root ${data.batch.merkleRoot.slice(0, 14)}...`,
+            `Signed & committed batch ${batchCode} (${data.batch.unitCount} units, root ${data.batch.merkleRoot.slice(0, 12)}...)${
+              data.sponsoredTxHash ? ` [Tx: ${data.sponsoredTxHash.slice(0, 12)}...]` : ""
+            }`,
           );
           return;
         }
@@ -290,6 +304,7 @@ export default function BrandDashboardPage() {
   async function handleRecall(batchId: string) {
     if (session?.token) {
       try {
+        const signedTxXdr = await signContractAction("recall_batch");
         await fetch(`${PUBLIC_CONFIG.apiUrl}/v1/brands/recall`, {
           method: "POST",
           headers: {
@@ -300,6 +315,7 @@ export default function BrandDashboardPage() {
             mode: "batch",
             batchId,
             reason: "Manufacturer safety recall broadcast",
+            ...(signedTxXdr ? { signedTxXdr } : {}),
           }),
         });
       } catch {

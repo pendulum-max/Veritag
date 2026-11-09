@@ -25,7 +25,7 @@ const INITIAL_PRODUCTS: OwnedProductItem[] = [
 ];
 
 export default function OwnerPortalPage() {
-  const { session, connectPasskey, connectRoleKeypair } = useWallet();
+  const { session, connectPasskey, connectRoleKeypair, signContractAction } = useWallet();
   const [products, setProducts] = useState<OwnedProductItem[]>(INITIAL_PRODUCTS);
   const [transferCode, setTransferCode] = useState<string | null>(null);
   const [redeemUnitId, setRedeemUnitId] = useState("");
@@ -82,19 +82,29 @@ export default function OwnerPortalPage() {
   async function handleGenerateTransferCode(unitId: string) {
     if (session?.token) {
       try {
+        const signedTxXdr = await signContractAction("create_transfer_offer");
         const res = await fetch(`${PUBLIC_CONFIG.apiUrl}/v1/transfer/offer`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.token}`,
           },
-          body: JSON.stringify({ unitId, ttlSeconds: 86_400 }),
+          body: JSON.stringify({
+            unitId,
+            ttlSeconds: 86_400,
+            ...(signedTxXdr ? { signedTxXdr } : {}),
+          }),
         });
         if (res.ok) {
-          const data = (await res.json()) as { transferCode: string };
+          const data = (await res.json()) as {
+            transferCode: string;
+            sponsoredTxHash?: string;
+          };
           setTransferCode(data.transferCode);
           setFeedback(
-            "Generated 24-hour one-time resale code anchored to your unit. Share this with the buyer.",
+            `Signed & generated 24-hour one-time resale code anchored to your unit.${
+              data.sponsoredTxHash ? ` [Tx: ${data.sponsoredTxHash.slice(0, 12)}...]` : ""
+            }`,
           );
           return;
         }
@@ -114,6 +124,7 @@ export default function OwnerPortalPage() {
     if (!redeemUnitId.trim() || !redeemCode.trim()) return;
     if (session?.token) {
       try {
+        const signedTxXdr = await signContractAction("redeem_transfer");
         const res = await fetch(`${PUBLIC_CONFIG.apiUrl}/v1/transfer/redeem`, {
           method: "POST",
           headers: {
@@ -123,11 +134,15 @@ export default function OwnerPortalPage() {
           body: JSON.stringify({
             unitId: redeemUnitId.trim(),
             code: redeemCode.trim(),
+            ...(signedTxXdr ? { signedTxXdr } : {}),
           }),
         });
         if (res.ok) {
+          const data = (await res.json()) as { sponsoredTxHash?: string };
           setFeedback(
-            `Ownership & remaining warranty transferred to ${session.address.slice(0, 10)}...!`,
+            `Ownership & remaining warranty transferred to ${session.address.slice(0, 10)}...!${
+              data.sponsoredTxHash ? ` [Tx: ${data.sponsoredTxHash.slice(0, 12)}...]` : ""
+            }`,
           );
           setRedeemCode("");
           await loadOwnerUnits(session.address, session.token);
@@ -153,6 +168,7 @@ export default function OwnerPortalPage() {
     }
     if (session?.token) {
       try {
+        const signedTxXdr = await signContractAction("file_claim");
         const res = await fetch(`${PUBLIC_CONFIG.apiUrl}/v1/claims`, {
           method: "POST",
           headers: {
@@ -162,12 +178,18 @@ export default function OwnerPortalPage() {
           body: JSON.stringify({
             unitId,
             serviceCenter: serviceCenterAddr.trim(),
+            ...(signedTxXdr ? { signedTxXdr } : {}),
           }),
         });
         if (res.ok) {
-          const data = (await res.json()) as { claimId: number };
+          const data = (await res.json()) as {
+            claimId: number;
+            sponsoredTxHash?: string;
+          };
           setFeedback(
-            `Warranty claim #${data.claimId} filed on-chain for service center ${serviceCenterAddr.slice(0, 10)}...`,
+            `Signed & filed warranty claim #${data.claimId} on-chain for service center ${serviceCenterAddr.slice(0, 10)}...${
+              data.sponsoredTxHash ? ` [Tx: ${data.sponsoredTxHash.slice(0, 12)}...]` : ""
+            }`,
           );
           return;
         }

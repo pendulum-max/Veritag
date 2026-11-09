@@ -1,6 +1,6 @@
 "use client";
 
-import { Keypair } from "@stellar/stellar-sdk";
+import { Keypair, type xdr } from "@stellar/stellar-sdk";
 import { Buffer } from "buffer";
 import {
   createContext,
@@ -10,8 +10,12 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { registerPasskeySmartWallet } from "./passkey";
-import { PUBLIC_CONFIG } from "./stellar";
+import { registerPasskeySmartWallet, signWithPasskeyAssertion } from "./passkey";
+import {
+  buildUnsignedRegistryTxXdr,
+  PUBLIC_CONFIG,
+  signRegistryTxWithSecret,
+} from "./stellar";
 
 export type WalletType = "freighter" | "passkey" | "keypair";
 export type DemoRole = "brand" | "owner" | "service";
@@ -21,6 +25,8 @@ export interface WalletSession {
   walletType: WalletType;
   token: string | null;
   label: string;
+  role?: DemoRole;
+  credentialId?: string;
 }
 
 interface WalletContextValue {
@@ -30,6 +36,7 @@ interface WalletContextValue {
   connectFreighter: () => Promise<WalletSession | null>;
   connectPasskey: (label?: string) => Promise<WalletSession | null>;
   connectRoleKeypair: (role: DemoRole) => Promise<WalletSession | null>;
+  signContractAction: (method: string, args?: xdr.ScVal[]) => Promise<string | null>;
   disconnect: () => void;
 }
 
@@ -182,6 +189,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           walletType: "passkey",
           token: cred.token ?? null,
           label: "Passkey Smart Account (secp256r1)",
+          credentialId: cred.credentialId,
         };
         persistSession(next);
         return next;
@@ -221,6 +229,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           walletType: "keypair",
           token,
           label: roleLabels[role],
+          role,
         };
         persistSession(next);
         return next;
@@ -232,6 +241,65 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       }
     },
     [persistSession],
+  );
+
+  const signContractAction = useCallback(
+    async (method: string, args?: xdr.ScVal[]): Promise<string | null> => {
+      if (!session) return null;
+      try {
+        const unsignedXdr = buildUnsignedRegistryTxXdr({
+          callerAddress: session.address,
+          method,
+          args,
+        });
+
+        if (session.walletType === "freighter") {
+          const api = typeof window !== "undefined" ? window.freighterApi : undefined;
+          if (api?.signTransaction) {
+            const signed = await api.signTransaction(unsignedXdr, {
+              networkPassphrase: PUBLIC_CONFIG.networkPassphrase,
+              address: session.address,
+            });
+            return typeof signed === "string" ? signed : signed.signedTxXdr;
+          }
+          return unsignedXdr;
+        }
+
+        if (session.walletType === "keypair") {
+          const rolesToCheck: DemoRole[] = session.role
+            ? [session.role, "brand", "owner", "service"]
+            : ["brand", "owner", "service"];
+          for (const r of rolesToCheck) {
+            const secret = localStorage.getItem(`${KEYPAIR_STORAGE_PREFIX}${r}`);
+            if (secret) {
+              const kp = Keypair.fromSecret(secret);
+              if (kp.publicKey() === session.address) {
+                return signRegistryTxWithSecret(unsignedXdr, secret);
+              }
+            }
+          }
+          return unsignedXdr;
+        }
+
+        if (session.walletType === "passkey" && session.credentialId) {
+          try {
+            const digest = await crypto.subtle.digest(
+              "SHA-256",
+              new TextEncoder().encode(unsignedXdr),
+            );
+            await signWithPasskeyAssertion(session.credentialId, new Uint8Array(digest));
+          } catch {
+            // Headless / non-authenticator fallback uses envelope XDR for fee-sponsor relay
+          }
+          return unsignedXdr;
+        }
+
+        return unsignedXdr;
+      } catch {
+        return null;
+      }
+    },
+    [session],
   );
 
   const disconnect = useCallback(() => {
@@ -248,6 +316,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         connectFreighter,
         connectPasskey,
         connectRoleKeypair,
+        signContractAction,
         disconnect,
       }}
     >

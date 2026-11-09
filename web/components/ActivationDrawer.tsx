@@ -13,7 +13,7 @@ interface ActivationDrawerProps {
 
 export function ActivationDrawer({ brand, batchId, serial }: ActivationDrawerProps) {
   const router = useRouter();
-  const { session, connectPasskey, connectRoleKeypair } = useWallet();
+  const { session, connectPasskey, connectRoleKeypair, signContractAction } = useWallet();
   const [secret, setSecret] = useState("");
   const [ownerAddress, setOwnerAddress] = useState("");
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
@@ -56,6 +56,7 @@ export function ActivationDrawer({ brand, batchId, serial }: ActivationDrawerPro
     setSubmitting(true);
     setStatusMsg(null);
     try {
+      const signedTxXdr = await signContractAction("activate");
       const res = await fetch(`${PUBLIC_CONFIG.apiUrl}/v1/activate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -65,13 +66,22 @@ export function ActivationDrawer({ brand, batchId, serial }: ActivationDrawerPro
           serial,
           secret: secret.trim(),
           firstOwner: ownerAddress.trim(),
+          ...(signedTxXdr ? { signedTxXdr } : {}),
         }),
       });
-      const data = (await res.json()) as { unitId?: string; error?: string };
+      const data = (await res.json()) as {
+        unitId?: string;
+        sponsoredTxHash?: string;
+        error?: string;
+      };
       if (!res.ok) {
         setStatusMsg(`Activation failed: ${data.error ?? res.statusText}`);
       } else {
-        setStatusMsg(`Unit activated on-chain! Unit ID: ${data.unitId?.slice(0, 16)}...`);
+        setStatusMsg(
+          `Unit activated on-chain! Unit ID: ${data.unitId?.slice(0, 16)}...${
+            data.sponsoredTxHash ? ` (Sponsored Tx: ${data.sponsoredTxHash.slice(0, 12)}...)` : ""
+          }`,
+        );
         router.refresh();
       }
     } catch {

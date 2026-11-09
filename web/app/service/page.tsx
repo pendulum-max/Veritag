@@ -16,7 +16,7 @@ interface IncomingClaim {
 }
 
 export default function ServiceCenterPage() {
-  const { session, connectRoleKeypair } = useWallet();
+  const { session, connectRoleKeypair, signContractAction } = useWallet();
   const [claims, setClaims] = useState<IncomingClaim[]>([
     {
       claimId: 1,
@@ -92,6 +92,7 @@ export default function ServiceCenterPage() {
         });
         if (uploadRes.ok) {
           const uploaded = (await uploadRes.json()) as { hash: string };
+          const signedTxXdr = await signContractAction("resolve_claim");
           const resolveRes = await fetch(`${PUBLIC_CONFIG.apiUrl}/v1/claims/${claimId}/resolve`, {
             method: "POST",
             headers: {
@@ -102,9 +103,11 @@ export default function ServiceCenterPage() {
               unitId,
               outcome: selectedOutcome,
               reportHash: uploaded.hash,
+              ...(signedTxXdr ? { signedTxXdr } : {}),
             }),
           });
           if (resolveRes.ok) {
+            const resolvedData = (await resolveRes.json()) as { sponsoredTxHash?: string };
             setClaims((prev) =>
               prev.map((c) =>
                 c.claimId === claimId && c.unitId === unitId
@@ -113,7 +116,11 @@ export default function ServiceCenterPage() {
               ),
             );
             setNotice(
-              `Uploaded diagnostic report (${uploaded.hash.slice(0, 12)}...) and resolved Claim #${claimId} as ${selectedOutcome}.`,
+              `Uploaded diagnostic report (${uploaded.hash.slice(0, 12)}...) & signed resolve_claim for Claim #${claimId} (${selectedOutcome})${
+                resolvedData.sponsoredTxHash
+                  ? ` [Tx: ${resolvedData.sponsoredTxHash.slice(0, 12)}...]`
+                  : ""
+              }.`,
             );
             setReportSummary("");
             return;

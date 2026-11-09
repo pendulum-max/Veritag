@@ -1,3 +1,11 @@
+import {
+  Account,
+  Contract,
+  Keypair,
+  StrKey,
+  TransactionBuilder,
+  type xdr,
+} from "@stellar/stellar-sdk";
 import { computeSerialHash, hexToBytes32, RegistryContract } from "@veritag/sdk";
 
 export type VerificationStatus =
@@ -82,6 +90,43 @@ export function createRegistryReadClient(): RegistryContract.Client {
     rpcUrl: PUBLIC_CONFIG.rpcUrl,
     allowHttp: PUBLIC_CONFIG.rpcUrl.startsWith("http://"),
   });
+}
+
+const PASSKEY_SOURCE_FALLBACK = "GCFGKLCBV5IGJYGRR7FJNU53HFV5674PMQNNJT6HRAFGUAHZ7V3ZELXR";
+
+/**
+ * Builds an unsigned Soroban contract invocation transaction XDR targeting `VeritagRegistry`
+ * so a browser wallet (Freighter, Passkey Smart Account, or local Ed25519 signer) can sign
+ * the transaction client-side before fee-bump sponsorship via `/v1/sponsor`.
+ */
+export function buildUnsignedRegistryTxXdr(params: {
+  callerAddress: string;
+  method: string;
+  args?: xdr.ScVal[];
+}): string {
+  const sourceAddress = StrKey.isValidEd25519PublicKey(params.callerAddress)
+    ? params.callerAddress
+    : PASSKEY_SOURCE_FALLBACK;
+  const source = new Account(sourceAddress, "0");
+  const contract = new Contract(PUBLIC_CONFIG.contractId);
+  const tx = new TransactionBuilder(source, {
+    fee: "10000",
+    networkPassphrase: PUBLIC_CONFIG.networkPassphrase,
+  })
+    .addOperation(contract.call(params.method, ...(params.args ?? [])))
+    .setTimeout(300)
+    .build();
+  return tx.toXDR();
+}
+
+/**
+ * Signs an unsigned Soroban transaction XDR with an Ed25519 secret key in the browser.
+ */
+export function signRegistryTxWithSecret(unsignedTxXdr: string, secret: string): string {
+  const kp = Keypair.fromSecret(secret);
+  const tx = TransactionBuilder.fromXDR(unsignedTxXdr, PUBLIC_CONFIG.networkPassphrase);
+  tx.sign(kp);
+  return tx.toXDR();
 }
 
 export async function fetchLatestLedgerSequence(timeoutMs = 1500): Promise<number | null> {

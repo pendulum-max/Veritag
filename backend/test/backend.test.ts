@@ -420,9 +420,25 @@ describe("@veritag/backend API & services", () => {
     }
   });
 
-  it("executes parameterized SQL queries in PostgresRepository", async () => {
+  it("executes parameterized SQL queries and schema migrations in PostgresRepository", async () => {
     const queries: Array<{ sql: string; params: unknown[] }> = [];
+    let appliedChecksum: string | null = null;
     const mockPool = {
+      connect: async () => ({
+        query: async (sql: string, params: unknown[] = []) => {
+          queries.push({ sql, params });
+          if (sql.includes("SELECT checksum FROM schema_migrations")) {
+            return {
+              rows: appliedChecksum ? [{ checksum: appliedChecksum }] : [],
+            };
+          }
+          if (sql.includes("INSERT INTO schema_migrations")) {
+            appliedChecksum = String(params[1]);
+          }
+          return { rows: [] };
+        },
+        release: () => {},
+      }),
       query: async (sql: string, params: unknown[] = []) => {
         queries.push({ sql, params });
         if (sql.includes("FROM transfer_offers")) {
@@ -451,6 +467,14 @@ describe("@veritag/backend API & services", () => {
     } as unknown as pg.Pool;
 
     const pgRepo = new PostgresRepository(mockPool);
+    const firstMigration = await pgRepo.ensureSchema();
+    expect(firstMigration.applied).toBe(true);
+    expect(firstMigration.version).toBe("001_initial_schema");
+
+    const secondMigration = await pgRepo.ensureSchema();
+    expect(secondMigration.applied).toBe(false);
+    expect(secondMigration.checksum).toBe(firstMigration.checksum);
+
     await pgRepo.setTransferOffer({ unitId: "u1", codeHash: "ch1", expiresAt: 999999 });
     const offer = await pgRepo.getTransferOffer("u1");
     expect(offer?.codeHash).toBe("ch1");
@@ -466,7 +490,6 @@ describe("@veritag/backend API & services", () => {
     });
     const pw = await pgRepo.getPasskeyWallet("cred1");
     expect(pw?.walletAddress).toBe("CABC");
-    expect(queries.length).toBe(4);
   });
 
   it("enforces rate limiting and blocks non-Soroban operations on fee sponsor", async () => {

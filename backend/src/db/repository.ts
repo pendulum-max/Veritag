@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import pg from "pg";
+import { runDatabaseMigrations, type MigrationResult } from "./migrate.js";
 
 export interface BrandRecord {
   address: string;
@@ -489,6 +490,10 @@ export class PostgresRepository implements Repository {
       typeof databaseUrlOrPool === "string"
         ? new pg.Pool({ connectionString: databaseUrlOrPool })
         : databaseUrlOrPool;
+  }
+
+  async ensureSchema(): Promise<MigrationResult> {
+    return runDatabaseMigrations(this.pool);
   }
 
   async close(): Promise<void> {

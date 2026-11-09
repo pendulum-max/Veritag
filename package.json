@@ -16,6 +16,7 @@
     "contract:build": "stellar contract build",
     "contract:test": "cargo test --workspace",
     "contract:bindings": "./scripts/generate-bindings.sh",
+    "db:migrate": "pnpm --filter @veritag/backend db:migrate",
     "seed:demo": "tsx scripts/seed-demo.ts"
   },
   "devDependencies": {

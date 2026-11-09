@@ -18,7 +18,11 @@ function selectRepository(): Repository {
     return new InMemoryRepository();
   }
   if (process.env.USE_POSTGRES_DB === "true") {
-    return new PostgresRepository(config.databaseUrl);
+    const pgRepo = new PostgresRepository(config.databaseUrl);
+    void pgRepo.ensureSchema().catch((err) => {
+      console.error("Failed to initialize PostgreSQL schema:", err);
+    });
+    return pgRepo;
   }
   return new JsonFileRepository(".data/veritag-db.json");
 }

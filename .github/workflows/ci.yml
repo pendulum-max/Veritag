@@ -1,0 +1,67 @@
+name: Veritag CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    name: Soroban Smart Contracts (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32v1-none
+          components: clippy, rustfmt
+
+      - name: Cache Cargo registry and target
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check Rust Clippy lints
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Run Soroban contract unit tests
+        run: cargo test --workspace
+
+      - name: Build WASM release artifacts
+        run: cargo build --workspace --target wasm32v1-none --release
+
+  typescript:
+    name: SDK, Backend, Indexer & Web (TypeScript)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build workspace packages
+        run: pnpm build
+
+      - name: Typecheck all packages
+        run: pnpm lint
+
+      - name: Run unit & integration test suites
+        run: pnpm test

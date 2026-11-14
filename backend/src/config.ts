@@ -17,6 +17,9 @@ export interface BackendConfig {
   s3Endpoint: string;
   s3Bucket: string;
   localStorageDir: string;
+  sep10HomeDomain?: string;
+  sep10WebAuthDomain?: string;
+  sep10SigningSecret?: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): BackendConfig {
@@ -44,5 +47,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BackendConfig 
     s3Endpoint: env.S3_ENDPOINT ?? "http://localhost:9000",
     s3Bucket: env.S3_BUCKET ?? "veritag-files",
     localStorageDir: env.LOCAL_STORAGE_DIR ?? ".data/storage",
+    sep10HomeDomain: env.SEP10_HOME_DOMAIN ?? "veritag.stellar.org",
+    sep10WebAuthDomain: env.SEP10_WEB_AUTH_DOMAIN ?? "api.veritag.stellar.org",
+    sep10SigningSecret: env.SEP10_SIGNING_SECRET ?? "",
   };
 }

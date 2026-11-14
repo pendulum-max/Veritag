@@ -74,14 +74,15 @@ fn test_webauthn_check_auth_success_and_rejections() {
     assert_eq!(client.get_passkey(&cred_id), Some(pubkey));
     assert_eq!(client.get_passkey_count(), 1);
     assert_eq!(client.get_recovery_signer(), Some(recovery));
+    assert_eq!(client.get_nonce(), 0);
 
     let payload_bytes = [0x42u8; 32];
     let payload_hash: Hash<32> = env
         .crypto()
         .sha256(&Bytes::from_slice(&env, &payload_bytes));
-    let challenge_arr = payload_hash.to_array();
+    let challenge_arr = compute_challenge_digest(&env, &payload_hash, 0);
 
-    // 1. Valid WebAuthn assertion with UP (0x01) + UV (0x04) = 0x05
+    // 1. Valid WebAuthn assertion with UP (0x01) + UV (0x04) = 0x05 at nonce = 0
     let valid_cred = sign_webauthn_challenge(&env, &signing_key, &cred_id, &challenge_arr, 0x05);
     env.as_contract(&contract_id, || {
         let res = PasskeyAccountContract::__check_auth(
@@ -92,9 +93,12 @@ fn test_webauthn_check_auth_success_and_rejections() {
         );
         assert_eq!(res, Ok(()));
     });
+    assert_eq!(client.get_nonce(), 1);
 
     // 2. Reject when User Present flag (bit 0) is 0
-    let no_up_cred = sign_webauthn_challenge(&env, &signing_key, &cred_id, &challenge_arr, 0x04);
+    let challenge_nonce_1 = compute_challenge_digest(&env, &payload_hash, 1);
+    let no_up_cred =
+        sign_webauthn_challenge(&env, &signing_key, &cred_id, &challenge_nonce_1, 0x04);
     env.as_contract(&contract_id, || {
         let res = PasskeyAccountContract::__check_auth(
             env.clone(),
@@ -105,7 +109,7 @@ fn test_webauthn_check_auth_success_and_rejections() {
         assert_eq!(res, Err(AccountError::UserNotPresent));
     });
 
-    // 3. Reject when challenge in clientDataJSON does not match signature_payload
+    // 3. Reject when challenge in clientDataJSON does not match signature_payload + current nonce
     let wrong_challenge = [0x99u8; 32];
     let wrong_challenge_cred =
         sign_webauthn_challenge(&env, &signing_key, &cred_id, &wrong_challenge, 0x05);
@@ -122,7 +126,7 @@ fn test_webauthn_check_auth_success_and_rejections() {
     // 4. Reject when credential_id is unknown
     let unknown_id = Bytes::from_slice(&env, b"cred-unknown");
     let unknown_cred =
-        sign_webauthn_challenge(&env, &signing_key, &unknown_id, &challenge_arr, 0x05);
+        sign_webauthn_challenge(&env, &signing_key, &unknown_id, &challenge_nonce_1, 0x05);
     env.as_contract(&contract_id, || {
         let res = PasskeyAccountContract::__check_auth(
             env.clone(),
@@ -132,6 +136,67 @@ fn test_webauthn_check_auth_success_and_rejections() {
         );
         assert_eq!(res, Err(AccountError::UnknownCredential));
     });
+}
+
+#[test]
+fn test_nonce_replay() {
+    let env = Env::default();
+    let (signing_key, pubkey) = generate_p256_keypair(&env, 19);
+    let cred_id = Bytes::from_slice(&env, b"cred-replay-guard");
+
+    let contract_id = env.register(
+        PasskeyAccountContract,
+        (cred_id.clone(), pubkey, Option::<Address>::None),
+    );
+    let client = PasskeyAccountContractClient::new(&env, &contract_id);
+
+    assert_eq!(client.get_nonce(), 0);
+
+    let payload_hash: Hash<32> = env
+        .crypto()
+        .sha256(&Bytes::from_slice(&env, b"transfer-unit-payload"));
+
+    // Sign for nonce = 0
+    let challenge_0 = compute_challenge_digest(&env, &payload_hash, 0);
+    let cred_nonce_0 = sign_webauthn_challenge(&env, &signing_key, &cred_id, &challenge_0, 0x05);
+
+    // First execution at nonce = 0 succeeds and advances nonce to 1
+    env.as_contract(&contract_id, || {
+        let res = PasskeyAccountContract::__check_auth(
+            env.clone(),
+            payload_hash.clone(),
+            AccountSignature::WebAuthn(cred_nonce_0.clone()),
+            Vec::new(&env),
+        );
+        assert_eq!(res, Ok(()));
+    });
+    assert_eq!(client.get_nonce(), 1);
+
+    // Replaying the exact same signature (signed for nonce = 0) when contract nonce is 1 fails with ChallengeMismatch
+    env.as_contract(&contract_id, || {
+        let replay_res = PasskeyAccountContract::__check_auth(
+            env.clone(),
+            payload_hash.clone(),
+            AccountSignature::WebAuthn(cred_nonce_0),
+            Vec::new(&env),
+        );
+        assert_eq!(replay_res, Err(AccountError::ChallengeMismatch));
+    });
+    assert_eq!(client.get_nonce(), 1);
+
+    // Signing with the updated nonce = 1 succeeds and advances nonce to 2
+    let challenge_1 = compute_challenge_digest(&env, &payload_hash, 1);
+    let cred_nonce_1 = sign_webauthn_challenge(&env, &signing_key, &cred_id, &challenge_1, 0x05);
+    env.as_contract(&contract_id, || {
+        let next_res = PasskeyAccountContract::__check_auth(
+            env.clone(),
+            payload_hash.clone(),
+            AccountSignature::WebAuthn(cred_nonce_1),
+            Vec::new(&env),
+        );
+        assert_eq!(next_res, Ok(()));
+    });
+    assert_eq!(client.get_nonce(), 2);
 }
 
 #[test]
@@ -162,7 +227,7 @@ fn test_passkey_rotation_and_recovery_guards() {
     assert_eq!(client.get_passkey(&cred1), None);
     assert_eq!(client.get_passkey(&cred2), Some(pk2));
 
-    // Configure recovery signer, then verify Recovery auth works
+    // Configure recovery signer, then verify Recovery auth works and increments nonce
     let recovery = Address::generate(&env);
     client.set_recovery_signer(&Some(recovery.clone()));
     assert_eq!(client.get_recovery_signer(), Some(recovery));
@@ -177,4 +242,5 @@ fn test_passkey_rotation_and_recovery_guards() {
         );
         assert_eq!(res, Ok(()));
     });
+    assert_eq!(client.get_nonce(), 1);
 }

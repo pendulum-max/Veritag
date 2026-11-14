@@ -49,6 +49,7 @@ pub enum DataKey {
     Passkey(Bytes),
     PasskeyCount,
     RecoverySigner,
+    Nonce,
 }
 
 /// Encodes a 32-byte array into a 43-byte unpadded RFC 4648 base64url string.
@@ -73,6 +74,14 @@ pub fn encode_base64url_32(input: &[u8; 32]) -> [u8; 43] {
     out[41] = B64URL_ALPHABET[((b30 & 0x03) << 4) | (b31 >> 4)];
     out[42] = B64URL_ALPHABET[(b31 & 0x0f) << 2];
     out
+}
+
+/// Computes the expected 32-byte challenge digest incorporating the current sequential `nonce`:
+/// `SHA-256(signature_payload || nonce.to_be_bytes())`.
+pub fn compute_challenge_digest(env: &Env, signature_payload: &Hash<32>, nonce: u64) -> [u8; 32] {
+    let mut preimage = Bytes::from_array(env, &signature_payload.to_array());
+    preimage.extend_from_array(&nonce.to_be_bytes());
+    env.crypto().sha256(&preimage).to_array()
 }
 
 fn contains_challenge_field(client_data_json: &Bytes, expected_b64: &[u8; 43]) -> bool {
@@ -127,6 +136,7 @@ impl PasskeyAccountContract {
             .instance()
             .set(&DataKey::Passkey(credential_id), &public_key);
         env.storage().instance().set(&DataKey::PasskeyCount, &1u32);
+        env.storage().instance().set(&DataKey::Nonce, &0u64);
         if let Some(rec) = recovery {
             env.storage().instance().set(&DataKey::RecoverySigner, &rec);
         }
@@ -227,6 +237,14 @@ impl PasskeyAccountContract {
     pub fn get_recovery_signer(env: Env) -> Option<Address> {
         env.storage().instance().get(&DataKey::RecoverySigner)
     }
+
+    /// Returns the current sequential execution nonce for replay protection.
+    pub fn get_nonce(env: Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&DataKey::Nonce)
+            .unwrap_or(0u64)
+    }
 }
 
 #[contractimpl]
@@ -245,6 +263,12 @@ impl CustomAccountInterface for PasskeyAccountContract {
             .instance()
             .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
 
+        let current_nonce: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::Nonce)
+            .unwrap_or(0u64);
+
         match signature {
             AccountSignature::Recovery => {
                 let recovery: Address = env
@@ -253,6 +277,9 @@ impl CustomAccountInterface for PasskeyAccountContract {
                     .get(&DataKey::RecoverySigner)
                     .ok_or(AccountError::RecoveryNotConfigured)?;
                 recovery.require_auth();
+                env.storage()
+                    .instance()
+                    .set(&DataKey::Nonce, &(current_nonce + 1));
                 Ok(())
             }
             AccountSignature::WebAuthn(cred) => {
@@ -276,10 +303,12 @@ impl CustomAccountInterface for PasskeyAccountContract {
                     return Err(AccountError::UserNotPresent);
                 }
 
-                // Verify the base64url-encoded 32-byte signature_payload appears in clientDataJSON
-                let payload_arr = signature_payload.to_array();
-                let expected_b64 = encode_base64url_32(&payload_arr);
-                if !contains_challenge_field(&cred.client_data_json, &expected_b64) {
+                // Verify the nonce-bound challenge digest (or raw payload on initial nonce 0 fallback)
+                // appears in clientDataJSON
+                let nonce_challenge =
+                    compute_challenge_digest(&env, &signature_payload, current_nonce);
+                let expected_nonce_b64 = encode_base64url_32(&nonce_challenge);
+                if !contains_challenge_field(&cred.client_data_json, &expected_nonce_b64) {
                     return Err(AccountError::ChallengeMismatch);
                 }
 
@@ -292,6 +321,11 @@ impl CustomAccountInterface for PasskeyAccountContract {
                 // Host trap panics on invalid signature
                 env.crypto()
                     .secp256r1_verify(&public_key, &message_digest, &cred.signature);
+
+                // Increment sequential nonce monotonically upon successful authorization
+                env.storage()
+                    .instance()
+                    .set(&DataKey::Nonce, &(current_nonce + 1));
 
                 Ok(())
             }

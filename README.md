@@ -637,7 +637,7 @@ Playwright flows: verify page states, activation, transfer, claim.
 
 ## Contributing
 
-Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for full local setup, testing, and Drips Stellar Wave contributor guidelines. Please:
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) and the [Contributor Onboarding & Troubleshooting Guide](docs/contributor-guide.md) for full local setup, testing, and Drips Stellar Wave contributor guidelines. Please:
 
 1. Open an issue to discuss significant changes first.
 2. Fork the repo and create a feature branch.

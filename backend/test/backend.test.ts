@@ -599,4 +599,79 @@ describe("@veritag/backend API & services", () => {
     const regBody = (await regWithSignedTx.json()) as { sponsoredTxHash?: string };
     expect(typeof regBody.sponsoredTxHash).toBe("string");
   });
+  it("sep10: generates signed SEP-10 challenge transactions, verifies wallet signatures, and rejects expired or invalid signatures", async () => {
+    const serverKp = Keypair.random();
+    const clientKp = Keypair.random();
+    const attackerKp = Keypair.random();
+
+    const cfg = {
+      ...loadConfig({}),
+      sep10SigningSecret: serverKp.secret(),
+      sep10HomeDomain: "veritag.stellar.org",
+      sep10WebAuthDomain: "api.veritag.stellar.org",
+    };
+    const app = createApp({ config: cfg });
+
+    // 1. Fetch SEP-10 challenge transaction XDR via GET /v1/auth/sep10/challenge
+    const chalRes = await app.request(
+      /v1/auth/sep10/challenge?account=&home_domain=veritag.stellar.org,
+    );
+    expect(chalRes.status).toBe(200);
+    const chalBody = (await chalRes.json()) as {
+      transaction: string;
+      network_passphrase: string;
+      serverAccount: string;
+    };
+    expect(chalBody.serverAccount).toBe(serverKp.publicKey());
+
+    // 2. Client signs with wrong keypair (attackerKp) -> must be rejected with 401 InvalidClientSignature
+    const badTx = new Transaction(chalBody.transaction, chalBody.network_passphrase);
+    badTx.sign(attackerKp);
+    const badVerifyRes = await app.request("/v1/auth/sep10/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transaction: badTx.toXDR() }),
+    });
+    expect(badVerifyRes.status).toBe(401);
+    expect(((await badVerifyRes.json()) as { error: string }).error).toBe(
+      "InvalidClientSignature",
+    );
+
+    // 3. Client signs with legitimate master keypair -> issues JWT session token with sub = client G... key
+    const validTx = new Transaction(chalBody.transaction, chalBody.network_passphrase);
+    validTx.sign(clientKp);
+    const okVerifyRes = await app.request("/v1/auth/sep10/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transaction: validTx.toXDR() }),
+    });
+    expect(okVerifyRes.status).toBe(200);
+    const okBody = (await okVerifyRes.json()) as { token: string; account: string };
+    expect(okBody.account).toBe(clientKp.publicKey());
+    const authSvc = new AuthService(cfg.jwtSecret);
+    expect(authSvc.verifyToken(okBody.token).sub).toBe(clientKp.publicKey());
+
+    // 4. Replaying the same signed challenge transaction is rejected with ChallengeAlreadyUsed
+    const replayRes = await app.request("/v1/auth/sep10/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transaction: validTx.toXDR() }),
+    });
+    expect(replayRes.status).toBe(401);
+    expect(((await replayRes.json()) as { error: string }).error).toBe(
+      "ChallengeAlreadyUsed",
+    );
+
+    // 5. Expired challenge transaction is rejected with ChallengeExpired
+    const sep10Svc = new Sep10Service(cfg, authSvc);
+    const expiredChal = sep10Svc.buildChallenge(clientKp.publicKey(), {
+      nowSeconds: 1_000_000,
+      ttlSeconds: 60,
+    });
+    const expiredTx = new Transaction(expiredChal.transaction, expiredChal.network_passphrase);
+    expiredTx.sign(clientKp);
+    expect(() =>
+      sep10Svc.verifyChallenge(expiredTx.toXDR(), { nowSeconds: 1_000_120 }),
+    ).toThrow("ChallengeExpired");
+  });
 });

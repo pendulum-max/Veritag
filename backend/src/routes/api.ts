@@ -25,6 +25,7 @@ import {
   type SorobanTransactionService,
   computeDeterministicPasskeyAddress,
 } from "../services/soroban-tx.js";
+import { Sep10Service } from "../services/sep10.js";
 import { verifyBrandDomainToml } from "../services/stellar-toml.js";
 import type { ObjectStorageAdapter } from "../services/storage.js";
 import type { TtlMaintenanceWorker } from "../services/ttl-worker.js";
@@ -62,6 +63,7 @@ function anonymizeAddress(addr: string): string {
 
 export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVariables }> {
   const router = new Hono<{ Variables: AppVariables }>();
+  const sep10 = new Sep10Service(deps.config, deps.auth);
 
   const requireAuth = async (
     c: Context<{ Variables: AppVariables }>,
@@ -182,6 +184,38 @@ export function createV1Router(deps: ApiDependencies): Hono<{ Variables: AppVari
         assertion?.publicKeyHex ? assertion : undefined,
       );
       return c.json({ token });
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : "Unauthorized" }, 401);
+    }
+  });
+
+  router.get("/auth/sep10/challenge", rateLimitWrite("sep10-challenge"), (c) => {
+    const account = c.req.query("account") ?? "";
+    const homeDomain = c.req.query("home_domain");
+    if (!account) {
+      return c.json({ error: "Missing account query parameter" }, 400);
+    }
+    try {
+      const challenge = sep10.buildChallenge(account, {
+        homeDomain: homeDomain || undefined,
+      });
+      return c.json(challenge);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : "Bad request" }, 400);
+    }
+  });
+
+  router.post("/auth/sep10/verify", rateLimitWrite("sep10-verify"), async (c) => {
+    const schema = z.object({
+      transaction: z.string().min(32),
+    });
+    const parsed = schema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) {
+      return c.json({ error: "Invalid SEP-10 verification payload", details: parsed.error.flatten() }, 400);
+    }
+    try {
+      const verified = sep10.verifyChallenge(parsed.data.transaction);
+      return c.json(verified);
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : "Unauthorized" }, 401);
     }

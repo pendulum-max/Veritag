@@ -5,3 +5,4 @@ export * from "./merkle.js";
 export * from "./qr.js";
 export * from "./qr-svg.js";
 export * from "./webauthn.js";
+export * from "./webauthn-flags.js";

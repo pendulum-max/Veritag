@@ -2,7 +2,7 @@
 
 Thank you for your interest in contributing to **Veritag** — the open-source physical product authenticity, digital warranty, and circular-economy provenance registry built on **Stellar Soroban**!
 
-We welcome contributors of all experience levels, including participants in the **Drips Stellar Wave Program**.
+We welcome contributors of all experience levels, including participants in the **Drips Stellar Wave Program**. For detailed OS-specific onboarding (macOS, Linux, Windows WSL2) and our Top 10 Troubleshooting Runbook, see [**docs/contributor-guide.md**](docs/contributor-guide.md).
 
 ---
 

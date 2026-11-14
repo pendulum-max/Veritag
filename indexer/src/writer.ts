@@ -6,11 +6,19 @@ export interface IndexerCursorState {
   lastCursor: string;
 }
 
+export interface QuarantinedLedgerGap {
+  fromLedger: number;
+  toLedger: number;
+  detectedAt: string;
+}
+
 export interface IndexerWriter {
   getCursor(streamId?: string): Promise<IndexerCursorState>;
   saveCursor(state: IndexerCursorState, streamId?: string): Promise<void>;
   applyEvent(event: DecodedRegistryEvent, finalized: boolean): Promise<{ applied: boolean }>;
   finalizeEventsUpTo(confirmedLedger: number): Promise<number>;
+  rollbackEventsAfterLedger?(rewindToLedger: number): Promise<number>;
+  recordGapQuarantine?(gap: QuarantinedLedgerGap): Promise<void>;
 }
 
 const DEFAULT_STREAM_ID = "soroban-registry";
@@ -21,6 +29,7 @@ export class InMemoryIndexerWriter implements IndexerWriter {
     string,
     { event: DecodedRegistryEvent; finalized: boolean }
   >();
+  public readonly quarantinedGaps: QuarantinedLedgerGap[] = [];
   public readonly brands = new Map<string, { domain: string; verified: boolean }>();
   public readonly batches = new Map<
     string,
@@ -49,6 +58,21 @@ export class InMemoryIndexerWriter implements IndexerWriter {
 
   async saveCursor(state: IndexerCursorState, streamId = DEFAULT_STREAM_ID): Promise<void> {
     this.cursors.set(streamId, { ...state });
+  }
+
+  async recordGapQuarantine(gap: QuarantinedLedgerGap): Promise<void> {
+    this.quarantinedGaps.push({ ...gap });
+  }
+
+  async rollbackEventsAfterLedger(rewindToLedger: number): Promise<number> {
+    let removed = 0;
+    for (const [id, entry] of this.events.entries()) {
+      if (!entry.finalized && entry.event.ledger > rewindToLedger) {
+        this.events.delete(id);
+        removed++;
+      }
+    }
+    return removed;
   }
 
   async applyEvent(event: DecodedRegistryEvent, finalized: boolean): Promise<{ applied: boolean }> {
@@ -215,6 +239,18 @@ export class PostgresIndexerWriter implements IndexerWriter {
            updated_at = NOW()`,
       [streamId, state.lastLedger, state.lastCursor],
     );
+  }
+
+  async rollbackEventsAfterLedger(rewindToLedger: number): Promise<number> {
+    const res = await this.pool.query(
+      `DELETE FROM unit_events WHERE finalized = FALSE AND ledger > $1`,
+      [rewindToLedger],
+    );
+    return res.rowCount ?? 0;
+  }
+
+  async recordGapQuarantine(_gap: QuarantinedLedgerGap): Promise<void> {
+    // Quarantined ledger gap metadata can be persisted or emitted via telemetry
   }
 
   async applyEvent(event: DecodedRegistryEvent, finalized: boolean): Promise<{ applied: boolean }> {

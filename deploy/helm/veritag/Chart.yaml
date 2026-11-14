@@ -1,0 +1,14 @@
+apiVersion: v2
+name: veritag
+description: Production Helm chart for Veritag on-chain product authenticity and warranty microservices (backend, indexer, web)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - stellar
+  - soroban
+  - veritag
+  - authenticity
+  - warranty
+maintainers:
+  - name: Veritag Contributors

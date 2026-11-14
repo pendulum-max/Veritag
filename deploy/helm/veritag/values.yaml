@@ -1,0 +1,79 @@
+global:
+  stellarNetwork: "testnet"
+  sorobanRpcUrl: "https://soroban-testnet.stellar.org"
+  horizonUrl: "https://horizon-testnet.stellar.org"
+  networkPassphrase: "Test SDF Network ; September 2015"
+  registryContractId: "CCOY35YSS7ICXGYOSZOF4QXZP5OG2MFSEFXZUYJEFUUXG5HHZ3ZUZQND"
+  accountFactoryContractId: "CDIHHVXIPD4GGRJ24375YZ5T6LIIH4USUWA2WZ5VJAJ4KNL7LFMW63C4"
+  passkeyAccountWasmHash: "d1fac387cf017ab59c6aa425090685d55d624d759aa1a6d808cce03b38cf263f"
+  existingSecretName: "veritag-secrets"
+
+backend:
+  replicaCount: 2
+  image:
+    repository: ghcr.io/pendulum-max/veritag-backend
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 4000
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 75
+
+indexer:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/pendulum-max/veritag-indexer
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 150m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+web:
+  replicaCount: 2
+  image:
+    repository: ghcr.io/pendulum-max/veritag-web
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 3000
+  publicApiUrl: "https://api.veritag.stellar.org"
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 75
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  webHost: "veritag.stellar.org"
+  apiHost: "api.veritag.stellar.org"
+  tls:
+    enabled: true
+    secretName: "veritag-tls-cert"

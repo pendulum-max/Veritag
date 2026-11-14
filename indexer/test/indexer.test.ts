@@ -273,4 +273,142 @@ describe("@veritag/indexer XDR decoder, poller, and idempotent writer", () => {
     const dupRes = await pgWriter.applyEvent(duplicateDecoded, true);
     expect(dupRes.applied).toBe(false);
   });
+  it("detects skipped ledger gaps, logs warnings, rewinds cursor to last_contiguous_ledger, and recovers dropped events", async () => {
+    const brand1 = Keypair.random().publicKey();
+    const brand2 = Keypair.random().publicKey();
+    const brand3 = Keypair.random().publicKey();
+
+    // Event at ledger 200, then RPC drops 201 & 202 and jumps straight to 203
+    const ev200: RawSorobanEvent = {
+      id: "000200-1",
+      ledger: 200,
+      txHash: "tx200",
+      topic: [scSym("brand_registered"), scAddr(brand1)],
+      value: scMap([["domain", xdr.ScVal.scvString("brand1.org")]]),
+    };
+    const ev201Dropped: RawSorobanEvent = {
+      id: "000201-1",
+      ledger: 201,
+      txHash: "tx201",
+      topic: [scSym("brand_registered"), scAddr(brand2)],
+      value: scMap([["domain", xdr.ScVal.scvString("brand2.org")]]),
+    };
+    const ev202Dropped: RawSorobanEvent = {
+      id: "000202-1",
+      ledger: 202,
+      txHash: "tx202",
+      topic: [scSym("brand_verified"), scAddr(brand2)],
+      value: scMap([]),
+    };
+    const ev203: RawSorobanEvent = {
+      id: "000203-1",
+      ledger: 203,
+      txHash: "tx203",
+      topic: [scSym("brand_registered"), scAddr(brand3)],
+      value: scMap([["domain", xdr.ScVal.scvString("brand3.org")]]),
+    };
+
+    const writer = new InMemoryIndexerWriter();
+    const warnings: string[] = [];
+    const fetchCalls: Array<{ cursor?: string; startLedger?: number; limit?: number }> = [];
+
+    const gapProvider: SorobanEventsProvider = {
+      async fetchEvents(params) {
+        fetchCalls.push({ ...params });
+        if (fetchCalls.length === 1) {
+          // Initial page skips ledgers 201 and 202
+          return {
+            latestLedger: 205,
+            cursor: "000203-1",
+            events: [ev200, ev203],
+          };
+        }
+        // Recovery fetch rewound to startLedger = 201 with smaller chunk size
+        return {
+          latestLedger: 205,
+          cursor: "000203-1",
+          events: [ev201Dropped, ev202Dropped, ev203],
+        };
+      },
+    };
+
+    const poller = new IndexerPoller({
+      contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
+      provider: gapProvider,
+      writer,
+      batchLimit: 40,
+      recoveryChunkSize: 10,
+      onWarning: (msg) => warnings.push(msg),
+    });
+
+    const res = await poller.pollOnce();
+    expect(res.gapsRecovered).toBe(1);
+    expect(res.applied).toBe(4);
+    expect(warnings.length).toBe(1);
+    expect(warnings[0]).toContain("Ledger sequence gap detected between ledger 200 and 203");
+
+    // Verify recovery fetch used startLedger = 201 and smaller recoveryChunkSize = 10
+    expect(fetchCalls.length).toBe(2);
+    expect(fetchCalls[1]?.startLedger).toBe(201);
+    expect(fetchCalls[1]?.limit).toBe(10);
+
+    // Verify gap quarantine metadata and recovered state projections
+    expect(writer.quarantinedGaps.length).toBe(1);
+    expect(writer.quarantinedGaps[0]?.fromLedger).toBe(201);
+    expect(writer.quarantinedGaps[0]?.toLedger).toBe(202);
+    expect(writer.brands.get(brand1)?.domain).toBe("brand1.org");
+    expect(writer.brands.get(brand2)?.verified).toBe(true);
+    expect(writer.brands.get(brand3)?.domain).toBe("brand3.org");
+  });
+
+  it("handles RPC ledger regression by rolling back unfinalized events above rewind point", async () => {
+    const brand = Keypair.random().publicKey();
+    const writer = new InMemoryIndexerWriter();
+    await writer.saveCursor({ lastLedger: 310, lastCursor: "000310-1" });
+
+    // Seed one finalized event at ledger 300 and one unfinalized event at ledger 309
+    const ev300 = decodeRegistryEvent({
+      id: "000300-1",
+      ledger: 300,
+      txHash: "tx300",
+      topic: [scSym("brand_registered"), scAddr(brand)],
+      value: scMap([["domain", xdr.ScVal.scvString("canonical.io")]]),
+    })!;
+    const ev309Orphan = decodeRegistryEvent({
+      id: "000309-1",
+      ledger: 309,
+      txHash: "tx309",
+      topic: [scSym("brand_verified"), scAddr(brand)],
+      value: scMap([]),
+    })!;
+    await writer.applyEvent(ev300, true);
+    await writer.applyEvent(ev309Orphan, false);
+
+    const warnings: string[] = [];
+    let callIdx = 0;
+    const reorgProvider: SorobanEventsProvider = {
+      async fetchEvents() {
+        callIdx++;
+        if (callIdx === 1) {
+          // RPC node reports latestLedger regressed to 305 (< cursor 310)
+          return { latestLedger: 305, cursor: "", events: [] };
+        }
+        return { latestLedger: 305, cursor: "000305-1", events: [] };
+      },
+    };
+
+    const poller = new IndexerPoller({
+      contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
+      provider: reorgProvider,
+      writer,
+      onWarning: (msg) => warnings.push(msg),
+    });
+
+    const res = await poller.pollOnce();
+    expect(res.rolledBack).toBe(1);
+    expect(warnings.some((w) => w.includes("RPC ledger regression detected"))).toBe(true);
+    expect(writer.events.has("000300-1")).toBe(true);
+    expect(writer.events.has("000309-1")).toBe(false);
+    expect((await writer.getCursor()).lastLedger).toBe(305);
+  });
 });

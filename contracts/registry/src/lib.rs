@@ -10,7 +10,7 @@ use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, String, V
 use crate::events::{
     BatchCommitted, BatchRecalled, BrandRegistered, BrandVerified, ClaimFiled, ClaimResolved,
     DuplicateAttempt, ServiceCenterRegistered, TransferCancelled, TransferOffered, UnitActivated,
-    UnitFlagged, UnitTransferred,
+    UnitFlagged, UnitRetired, UnitTransferred,
 };
 use crate::types::{
     Batch, Brand, Claim, ClaimOutcome, Config, RegistryError, TransferOffer, Unit, UnitStatus,
@@ -513,6 +513,42 @@ impl VeritagRegistry {
     // -------------------------------------------------------------------------
     // Safety, Anti-Counterfeit Flags & Recalls
     // -------------------------------------------------------------------------
+
+    /// Retires an end-of-life unit for circular economy recycling or decommissioning
+    /// (authorized by the current unit owner or the brand admin).
+    pub fn retire_unit(
+        env: Env,
+        caller: Address,
+        unit_id: BytesN<32>,
+        reason_code: u32,
+        cert_hash: BytesN<32>,
+    ) -> Result<(), RegistryError> {
+        caller.require_auth();
+
+        let mut unit = storage::get_unit(&env, &unit_id).ok_or(RegistryError::UnitNotFound)?;
+        Self::ensure_unit_operational(&env, &unit)?;
+
+        let brand_record =
+            storage::get_brand(&env, &unit.brand).ok_or(RegistryError::BrandNotFound)?;
+        if caller != unit.owner && caller != brand_record.admin {
+            return Err(RegistryError::NotAuthorized);
+        }
+
+        unit.status = UnitStatus::Retired;
+        unit.history_len = unit.history_len.saturating_add(1);
+        storage::remove_offer(&env, &unit_id);
+        storage::set_unit(&env, &unit_id, &unit);
+        storage::extend_instance_ttl(&env);
+
+        UnitRetired {
+            unit_id,
+            caller,
+            reason_code,
+            cert_hash,
+        }
+        .publish(&env);
+        Ok(())
+    }
 
     /// Flags an individual unit as compromised, stolen, or counterfeit (brand admin only).
     pub fn flag_unit(

@@ -634,3 +634,73 @@ fn test_ttl_extension_and_strict_authorization() {
         .try_create_transfer_offer(&unit_id, &code_hash, &expires_at)
         .is_ok());
 }
+
+#[test]
+fn test_retire_unit() {
+    let f = TestFixture::setup();
+    f.setup_verified_brand();
+
+    let batch_id = f.hash_str("BATCH-CIRCULAR-ECONOMY");
+    let meta_hash = f.hash_str("META-RECYCLE");
+    let (merkle_root, units) = f.build_sample_batch(2);
+    f.client
+        .commit_batch(&f.brand, &batch_id, &merkle_root, &24, &meta_hash, &2);
+
+    let u0 = f.client.activate(
+        &f.brand,
+        &batch_id,
+        &units[0].0,
+        &units[0].3,
+        &units[0].1,
+        &f.alice,
+    );
+    let u1 = f.client.activate(
+        &f.brand,
+        &batch_id,
+        &units[1].0,
+        &units[1].3,
+        &units[1].1,
+        &f.bob,
+    );
+
+    let cert_hash = f.hash_str("ISO-14001-RECYCLING-CERT-2026");
+
+    // Unauthorized caller (Bob trying to retire Alice's unit) is rejected with NotAuthorized
+    assert_eq!(
+        f.client.try_retire_unit(&f.bob, &u0, &1, &cert_hash),
+        Err(Ok(RegistryError::NotAuthorized))
+    );
+
+    // Create a pending transfer offer on u0 to ensure retirement clears it
+    let code_hash = f.hash_str("TRANSFER-BEFORE-RETIRE");
+    f.client
+        .create_transfer_offer(&u0, &code_hash, &(f.env.ledger().timestamp() + 3600));
+    assert!(f.client.get_transfer_offer(&u0).is_some());
+
+    // Current owner (Alice) retires u0
+    f.client.retire_unit(&f.alice, &u0, &1, &cert_hash);
+
+    let u0_view = f.client.get_unit(&u0).unwrap();
+    assert_eq!(u0_view.status, UnitStatus::Retired);
+    assert!(!f.client.is_warranty_valid(&u0));
+    assert!(f.client.get_transfer_offer(&u0).is_none());
+
+    // Subsequent retirement, transfer offer, or warranty claim on retired unit fails with UnitRetired
+    assert_eq!(
+        f.client.try_retire_unit(&f.alice, &u0, &1, &cert_hash),
+        Err(Ok(RegistryError::UnitRetired))
+    );
+    assert_eq!(
+        f.client
+            .try_create_transfer_offer(&u0, &code_hash, &(f.env.ledger().timestamp() + 3600)),
+        Err(Ok(RegistryError::UnitRetired))
+    );
+    assert_eq!(
+        f.client.try_file_claim(&u0, &f.service_center),
+        Err(Ok(RegistryError::UnitRetired))
+    );
+
+    // Brand admin can also retire a unit (u1)
+    f.client.retire_unit(&f.brand, &u1, &2, &cert_hash);
+    assert_eq!(f.client.get_unit(&u1).unwrap().status, UnitStatus::Retired);
+}

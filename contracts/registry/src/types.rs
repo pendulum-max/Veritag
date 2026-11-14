@@ -160,3 +160,12 @@ pub struct VerifyResult {
     pub claims_used: u32,
     pub duplicate_attempts: u32,
 }
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RetirementRecord {
+    pub caller: Address,
+    pub reason_code: u32,
+    pub cert_hash: BytesN<32>,
+    pub retired_at: u64,
+}

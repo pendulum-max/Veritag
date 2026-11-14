@@ -2,7 +2,37 @@
 
 Base URL: `http://localhost:4000`
 
+Interactive Documentation:
+- **Swagger UI:** [`http://localhost:4000/docs`](http://localhost:4000/docs)
+- **OpenAPI 3.0 Spec:** [`http://localhost:4000/api/openapi.json`](http://localhost:4000/api/openapi.json)
+
 Authenticated endpoints require `Authorization: Bearer <jwt>` obtained via either SEP-10 Ed25519 challenge-response (`G...` accounts) or Soroban `secp256r1` Passkey Smart Account challenge-response (`C...` accounts).
+
+---
+
+## Health & System Info
+
+### `GET /health` or `GET /api/health`
+Returns service health status, network environment, and deployed smart contract addresses:
+```json
+{
+  "status": "ok",
+  "service": "veritag-backend",
+  "network": "testnet",
+  "contractId": "CCOY35YSS7ICXGYOSZOF4QXZP5OG2MFSEFXZUYJEFUUXG5HHZ3ZUZQND",
+  "accountFactoryContractId": "CDIHHVXIPD4GGRJ24375YZ5T6LIIH4USUWA2WZ5VJAJ4KNL7LFMW63C4"
+}
+```
+
+---
+
+## Interactive API Documentation
+
+### `GET /docs`
+Serves interactive Swagger UI documentation for exploring, testing, and visualizing all Veritag endpoints with "Try it out" capabilities.
+
+### `GET /api/openapi.json`
+Returns the complete OpenAPI 3.0.0 JSON specification describing all request schemas, response codes, parameters, and Bearer authentication schemes.
 
 ---
 

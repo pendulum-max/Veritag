@@ -1,8 +1,10 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { swaggerUI } from "@hono/swagger-ui";
 import { type BackendConfig, loadConfig } from "./config.js";
 import { InMemoryRepository, type Repository } from "./db/repository.js";
 import { createV1Router } from "./routes/api.js";
+import { getOpenApiSpec } from "./routes/openapi.js";
 import { AuthService, SlidingWindowRateLimiter } from "./services/auth.js";
 import { type RelayerService, StellarFeeSponsorService } from "./services/relayer.js";
 import { SorobanTransactionService } from "./services/soroban-tx.js";
@@ -52,15 +54,21 @@ export function createApp(options: CreateAppOptions = {}): Hono {
     }),
   );
 
-  app.get("/health", (c) =>
+  const healthHandler = (c: any) =>
     c.json({
       status: "ok",
       service: "veritag-backend",
       network: config.stellarNetwork,
       contractId: config.registryContractId,
       accountFactoryContractId: config.accountFactoryContractId,
-    }),
-  );
+    });
+
+  app.get("/health", healthHandler);
+  app.get("/api/health", healthHandler);
+
+  app.get("/api/openapi.json", (c) => c.json(getOpenApiSpec()));
+  app.get("/docs", swaggerUI({ url: "/api/openapi.json" }));
+  app.get("/docs/", swaggerUI({ url: "/api/openapi.json" }));
 
   app.route(
     "/v1",

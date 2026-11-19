@@ -7,6 +7,11 @@ export interface StellarTomlVerifyResult {
   error?: string;
 }
 
+export interface StellarTomlCacheAdapter {
+  get(key: string): Promise<StellarTomlVerifyResult | null>;
+  set(key: string, value: StellarTomlVerifyResult, ttlSeconds?: number): Promise<void>;
+}
+
 const PRIVATE_OR_LOCAL_HOST_PATTERNS = [
   /^localhost$/i,
   /\.local$/i,
@@ -65,6 +70,8 @@ export async function verifyBrandDomainToml(params: {
   domain: string;
   brandAddress: string;
   fetchImpl?: typeof fetch;
+  cache?: StellarTomlCacheAdapter;
+  cacheTtlSeconds?: number;
 }): Promise<StellarTomlVerifyResult> {
   const domain = params.domain.trim().toLowerCase();
   if (!isSafePublicDomain(domain)) {

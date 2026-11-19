@@ -47,6 +47,7 @@ pub enum RegistryError {
 pub struct Config {
     pub admin: Address,
     pub max_claims_per_unit: u32,
+    pub paused: bool,
 }
 
 #[contracttype]
@@ -106,6 +107,8 @@ pub struct Batch {
     pub warranty_months: u32,
     /// None allows transfers without a batch cap; Some(0) disables transfers.
     pub max_transfers: Option<u32>,
+    /// Optional per-batch warranty claim cap override.
+    pub max_claims: Option<u32>,
     pub product_meta_hash: BytesN<32>,
     pub metadata_cid: Option<BytesN<32>>,
     pub unit_count: u64,

@@ -26,3 +26,25 @@ export function parseVerifyPath(pathname: string): ParsedVerifyParams | null {
     serial: decodeURIComponent(match[3]),
   };
 }
+
+export function parseVerifyUri(uriOrUrl: string): ParsedVerifyParams | null {
+  const raw = uriOrUrl.trim();
+  if (!raw) return null;
+
+  if (raw.startsWith("veritag://")) {
+    const rest = raw.slice("veritag://".length).split("?")[0]?.split("#")[0] ?? "";
+    const normalizedPath = rest.startsWith("v/") ? `/${rest}` : `/v/${rest}`;
+    return parseVerifyPath(normalizedPath);
+  }
+
+  if (raw.startsWith("https://") || raw.startsWith("http://")) {
+    try {
+      const parsed = new URL(raw);
+      return parseVerifyPath(parsed.pathname);
+    } catch {
+      return null;
+    }
+  }
+
+  return parseVerifyPath(raw);
+}

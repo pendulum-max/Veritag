@@ -43,7 +43,7 @@ ttlWorker.start();
 
 const app = createApp({ config, repo, storage, sorobanTx, ttlWorker });
 
-serve(
+const server = serve(
   {
     fetch: app.fetch,
     port: config.port,
@@ -54,3 +54,14 @@ serve(
     );
   },
 );
+
+function handleShutdown(signal: NodeJS.Signals): void {
+  console.log(`Received ${signal}, shutting down Veritag backend gracefully...`);
+  ttlWorker.stop();
+  server.close(() => {
+    process.exit(0);
+  });
+}
+
+process.on("SIGTERM", () => handleShutdown("SIGTERM"));
+process.on("SIGINT", () => handleShutdown("SIGINT"));

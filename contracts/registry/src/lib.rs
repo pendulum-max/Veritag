@@ -366,6 +366,7 @@ impl VeritagRegistry {
             merkle_root: merkle_root.clone(),
             warranty_months,
             max_transfers: None,
+            max_claims: None,
             product_meta_hash,
             metadata_cid: metadata_cid.clone(),
             unit_count,

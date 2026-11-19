@@ -15,10 +15,15 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "docs": "typedoc --plugin typedoc-plugin-markdown src/index.ts"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^17.4.0",
     "buffer": "^6.0.3"
+  },
+  "devDependencies": {
+    "typedoc": "^0.27.6",
+    "typedoc-plugin-markdown": "^4.4.0"
   }
 }

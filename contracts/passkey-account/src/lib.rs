@@ -80,7 +80,39 @@ pub fn encode_base64url_32(input: &[u8; 32]) -> [u8; 43] {
 fn contains_challenge_field(client_data_json: &Bytes, expected_b64: &[u8; 43]) -> bool {
     let prefix = b"\"challenge\":\"";
     let json_len = client_data_json.len() as usize;
-    if json_len < prefix.len() + expected_b64.len() + 1 {
+    if json_len < prefix.len() + expected_b64.len() + 2 {
+        return false;
+    }
+
+    // Reject nested JSON object injection by tracking brace depth outside string literals
+    let mut depth: i32 = 0;
+    let mut in_str = false;
+    let mut escaped = false;
+    for idx in 0..json_len {
+        let b = client_data_json.get(idx as u32).unwrap_or(0);
+        if in_str {
+            if escaped {
+                escaped = false;
+            } else if b == b'\\' {
+                escaped = true;
+            } else if b == b'"' {
+                in_str = false;
+            }
+        } else if b == b'"' {
+            in_str = true;
+        } else if b == b'{' {
+            depth += 1;
+            if depth > 1 {
+                return false;
+            }
+        } else if b == b'}' {
+            depth -= 1;
+            if depth < 0 {
+                return false;
+            }
+        }
+    }
+    if depth != 0 || in_str {
         return false;
     }
 

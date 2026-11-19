@@ -6,4 +6,4 @@ export * from "./qr.js";
 export * from "./qr-svg.js";
 export * from "./webauthn.js";
 
-export * from "./ingestion.js";
+export * from "./errors.js";

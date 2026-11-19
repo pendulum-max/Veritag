@@ -41,6 +41,7 @@ impl VeritagRegistry {
         let config = Config {
             admin,
             max_claims_per_unit: DEFAULT_MAX_CLAIMS_PER_UNIT,
+            paused: false,
         };
         storage::set_config(&env, &config);
         Ok(())
@@ -366,6 +367,7 @@ impl VeritagRegistry {
             merkle_root: merkle_root.clone(),
             warranty_months,
             max_transfers: None,
+            max_claims: None,
             product_meta_hash,
             metadata_cid: metadata_cid.clone(),
             unit_count,

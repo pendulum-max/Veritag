@@ -28,6 +28,6 @@
     "axe-core": "^4.10.2",
     "jsdom": "^26.0.0",
     "postcss": "^8.5.3",
-    "tailwindcss": "^3.4.17"
+    "tailwindcss": "^4.3.5"
   }
 }

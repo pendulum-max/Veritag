@@ -1,5 +1,5 @@
 import { createHmac, createPublicKey, randomBytes, timingSafeEqual, verify } from "node:crypto";
-import { Keypair, StrKey } from "@stellar/stellar-sdk";
+import { Account, Keypair, Operation, StrKey, TransactionBuilder } from "@stellar/stellar-sdk";
 import { base64UrlEncode, sha256 } from "@veritag/sdk";
 
 export interface AuthTokenPayload {
@@ -14,6 +14,19 @@ export interface ChallengeRecord {
   challengeHashHex: string;
   message: string;
   expiresAt: number;
+}
+
+export interface Sep10ChallengeOptions {
+  serverSecret?: string;
+  networkPassphrase: string;
+  homeDomain: string;
+  webAuthDomain?: string;
+  timeoutSeconds?: number;
+}
+
+export interface Sep10ChallengeResponse {
+  transaction: string;
+  network_passphrase: string;
 }
 
 export interface PasskeyAssertionInput {
@@ -33,6 +46,62 @@ export class AuthService {
 
   constructor(jwtSecret: string) {
     this.secret = jwtSecret;
+  }
+
+  /**
+   * Builds and signs a SEP-10 challenge transaction XDR (sequence 0, manageData auth nonce
+   * and web_auth_domain operations) for a Stellar `G...` Ed25519 account.
+   */
+  createSep10Challenge(account: string, options: Sep10ChallengeOptions): Sep10ChallengeResponse {
+    if (!StrKey.isValidEd25519PublicKey(account)) {
+      throw new Error("Invalid Stellar Ed25519 account address");
+    }
+
+    const serverKeypair =
+      options.serverSecret &&
+      options.serverSecret !== "SAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4" &&
+      StrKey.isValidEd25519SecretSeed(options.serverSecret)
+        ? Keypair.fromSecret(options.serverSecret)
+        : Keypair.fromRawEd25519Seed(sha256(`veritag-sep10:${this.secret}`));
+
+    const timeoutSeconds = options.timeoutSeconds ?? 300;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const nonce = randomBytes(48).toString("base64");
+    const homeDomain = options.homeDomain.trim() || "veritag.local";
+    const webAuthDomain = (options.webAuthDomain ?? homeDomain).trim();
+
+    // Per SEP-10: sequence number is 0 (TransactionBuilder increments "-1" to "0").
+    const serverAccount = new Account(serverKeypair.publicKey(), "-1");
+    const tx = new TransactionBuilder(serverAccount, {
+      fee: "100",
+      networkPassphrase: options.networkPassphrase,
+      timebounds: {
+        minTime: nowSec,
+        maxTime: nowSec + timeoutSeconds,
+      },
+    })
+      .addOperation(
+        Operation.manageData({
+          source: account,
+          name: `${homeDomain} auth`,
+          value: nonce,
+        }),
+      )
+      .addOperation(
+        Operation.manageData({
+          source: serverKeypair.publicKey(),
+          name: "web_auth_domain",
+          value: webAuthDomain,
+        }),
+      )
+      .build();
+
+    tx.sign(serverKeypair);
+
+    return {
+      transaction: tx.toXDR(),
+      network_passphrase: options.networkPassphrase,
+    };
   }
 
   /**

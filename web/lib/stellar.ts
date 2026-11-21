@@ -347,3 +347,79 @@ export async function fetchUnitTimeline(unitId: string): Promise<{
 export function getFileDownloadUrl(hash: string): string {
   return `${PUBLIC_CONFIG.apiUrl}/v1/files/${encodeURIComponent(hash)}`;
 }
+
+export interface Gs1ResolutionResult {
+  gtin: string;
+  serial: string;
+  brandAddress: string;
+  brandDomain: string;
+  batchId: string;
+  redirectPath: string;
+  source: "api" | "demo-fallback";
+}
+
+const DEMO_GS1_BRAND = "GB7TAYRUZGE6TVT7NHP5SMIZRNQA6PLM423EYISAOAP3MKYIQMVYP2JO";
+const DEMO_GS1_BATCH = "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b";
+
+/**
+ * Validates standard GS1 GTIN lengths (GTIN-8, GTIN-12, GTIN-13, GTIN-14).
+ */
+export function isValidGtinFormat(gtin: string): boolean {
+  return /^(\d{8}|\d{12}|\d{13}|\d{14})$/.test(gtin);
+}
+
+/**
+ * Resolves a GS1 Digital Link (/01/{gtin}/21/{serial}) to the corresponding Veritag
+ * brand/batch/serial verification portal path.
+ */
+export async function resolveGs1DigitalLink(
+  gtin: string,
+  serial: string,
+): Promise<Gs1ResolutionResult | null> {
+  const cleanGtin = gtin.trim();
+  const cleanSerial = serial.trim();
+  if (!isValidGtinFormat(cleanGtin) || !cleanSerial) {
+    return null;
+  }
+
+  try {
+    const res = await fetch(
+      `${PUBLIC_CONFIG.apiUrl}/v1/gs1/01/${encodeURIComponent(cleanGtin)}/21/${encodeURIComponent(cleanSerial)}`,
+      { cache: "no-store", signal: AbortSignal.timeout(2000) },
+    );
+    if (res.ok) {
+      const data = (await res.json()) as {
+        brandAddress?: string;
+        brand?: string;
+        brandDomain?: string;
+        domain?: string;
+        batchId?: string;
+      };
+      const brandAddress = data.brandAddress ?? data.brand;
+      const batchId = data.batchId ?? DEMO_GS1_BATCH;
+      if (brandAddress) {
+        return {
+          gtin: cleanGtin,
+          serial: cleanSerial,
+          brandAddress,
+          brandDomain: data.brandDomain ?? data.domain ?? brandAddress,
+          batchId,
+          redirectPath: `/v/${encodeURIComponent(brandAddress)}/${encodeURIComponent(batchId)}/${encodeURIComponent(cleanSerial)}`,
+          source: "api",
+        };
+      }
+    }
+  } catch {
+    // Fall back to deterministic demo brand mapping when backend is offline
+  }
+
+  return {
+    gtin: cleanGtin,
+    serial: cleanSerial,
+    brandAddress: DEMO_GS1_BRAND,
+    brandDomain: "chronos-watches.swiss",
+    batchId: DEMO_GS1_BATCH,
+    redirectPath: `/v/${encodeURIComponent(DEMO_GS1_BRAND)}/${encodeURIComponent(DEMO_GS1_BATCH)}/${encodeURIComponent(cleanSerial)}`,
+    source: "demo-fallback",
+  };
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { WarrantyCertificate } from "@/components/WarrantyCertificate";
 import { PUBLIC_CONFIG } from "@/lib/stellar";
 import { useWallet } from "@/lib/wallet-context";
 
@@ -11,6 +12,7 @@ interface OwnedProductItem {
   brandDomain: string;
   warrantyDaysRemaining: number;
   claimsUsed: number;
+  txHash?: string;
 }
 
 const INITIAL_PRODUCTS: OwnedProductItem[] = [
@@ -21,6 +23,7 @@ const INITIAL_PRODUCTS: OwnedProductItem[] = [
     brandDomain: "chronos-watches.swiss",
     warrantyDaysRemaining: 630,
     claimsUsed: 1,
+    txHash: "4e9b2f7a1c8d3065a2b4c6d8e0f123456789abcdef0123456789abcdef012345",
   },
 ];
 
@@ -32,6 +35,7 @@ export default function OwnerPortalPage() {
   const [redeemCode, setRedeemCode] = useState("");
   const [serviceCenterAddr, setServiceCenterAddr] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [selectedCertUnit, setSelectedCertUnit] = useState<OwnedProductItem | null>(null);
 
   const loadOwnerUnits = useCallback(async (address: string, token: string) => {
     try {
@@ -269,7 +273,14 @@ export default function OwnerPortalPage() {
                 >
                   Create Resale Transfer Code
                 </button>
-                <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCertUnit(item)}
+                  className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                >
+                  Download Warranty Certificate
+                </button>
+                <div className="flex gap-2 sm:col-span-2">
                   <input
                     type="text"
                     placeholder="Service Center G..."
@@ -340,6 +351,29 @@ export default function OwnerPortalPage() {
           </button>
         </form>
       </div>
+
+      {selectedCertUnit && (
+        <WarrantyCertificate
+          data={{
+            unitId: selectedCertUnit.unitId,
+            model: selectedCertUnit.model,
+            serial: selectedCertUnit.serial,
+            brandDomain: selectedCertUnit.brandDomain,
+            ownerAddress:
+              session?.address ?? "GB9M4...2P8W (Connect Passkey for full Stellar address)",
+            txHash: selectedCertUnit.txHash,
+            contractId: PUBLIC_CONFIG.contractId,
+            expiresAt: new Date(
+              Date.now() + selectedCertUnit.warrantyDaysRemaining * 86_400 * 1000,
+            )
+              .toISOString()
+              .slice(0, 10),
+            warrantyDaysRemaining: selectedCertUnit.warrantyDaysRemaining,
+            claimsUsed: selectedCertUnit.claimsUsed,
+          }}
+          onClose={() => setSelectedCertUnit(null)}
+        />
+      )}
     </div>
   );
 }

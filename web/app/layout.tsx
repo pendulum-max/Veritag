@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Navbar } from "@/components/Navbar";
-import { AppThemeProvider } from "@/components/ThemeToggle";
+import { I18nProvider } from "@/lib/i18n";
 import { WalletProvider } from "@/lib/wallet-context";
 import "./globals.css";
 
@@ -12,18 +12,18 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className="min-h-screen flex flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-        <AppThemeProvider>
+    <html lang="en">
+      <body className="min-h-screen flex flex-col">
+        <I18nProvider>
           <WalletProvider>
             <Navbar />
             <main className="flex-1">{children}</main>
-            <footer className="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+            <footer className="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-500">
               Veritag · Powered by Stellar Soroban · Chain-anchored authenticity &amp; transferable
               warranties
             </footer>
           </WalletProvider>
-        </AppThemeProvider>
+        </I18nProvider>
       </body>
     </html>
   );

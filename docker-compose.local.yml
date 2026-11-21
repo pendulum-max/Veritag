@@ -1,0 +1,149 @@
+version: "3.9"
+
+# ---------------------------------------------------------------------------
+# Veritag — Standalone Local Development Stack (no internet required)
+# ---------------------------------------------------------------------------
+# Runs a self-contained Stellar Quickstart node in Soroban-dev (standalone)
+# mode alongside the same Postgres + MinIO services as docker-compose.yml.
+#
+# Usage:
+#   docker compose -f docker-compose.local.yml up -d
+#   # wait ~15 s for Quickstart to mine the first ledger, then:
+#   ./scripts/init-local-stellar.sh
+#
+# The init script funds the REGISTRY_ADMIN and SPONSOR accounts via the
+# local Friendbot, then deploys all three contracts and writes the resulting
+# contract IDs into a file called .env.local which you can source or copy.
+# ---------------------------------------------------------------------------
+
+services:
+  # -------------------------------------------------------------------------
+  # Stellar Quickstart — standalone Soroban dev network
+  # -------------------------------------------------------------------------
+  stellar-quickstart:
+    image: stellar/quickstart:soroban-dev
+    container_name: veritag-stellar
+    restart: unless-stopped
+    command: ["--standalone", "--enable-soroban-rpc", "--protocol-version", "21"]
+    ports:
+      - "8000:8000"   # Horizon API
+      - "8001:8001"   # Soroban RPC
+      - "8002:8002"   # Friendbot
+    environment:
+      # Keep network config explicit so the init script can reference it
+      STELLAR_NETWORK: standalone
+    healthcheck:
+      # Quickstart is ready once the core process starts serving /status
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/ | grep -q '\"network_passphrase\"' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 20s
+
+  # -------------------------------------------------------------------------
+  # PostgreSQL 16
+  # -------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: veritag-postgres-local
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-veritag}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-veritag}
+      POSTGRES_DB: ${POSTGRES_DB:-veritag}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_local_data:/var/lib/postgresql/data
+      - ./backend/src/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-veritag} -d ${POSTGRES_DB:-veritag}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------------------
+  # MinIO — S3-compatible object storage
+  # -------------------------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    container_name: veritag-minio-local
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-veritag}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-veritag-secret}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_local_data:/data
+
+  # -------------------------------------------------------------------------
+  # Backend (optional — only started with the "full" profile)
+  # -------------------------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: veritag-backend-local
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      stellar-quickstart:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://veritag:veritag@postgres:5432/veritag
+      S3_ENDPOINT: http://minio:9000
+      BACKEND_PORT: "4000"
+      STELLAR_NETWORK: standalone
+      SOROBAN_RPC_URL: http://stellar-quickstart:8001
+      HORIZON_URL: http://stellar-quickstart:8000
+      NETWORK_PASSPHRASE: "Standalone Network ; February 2017"
+      JWT_SECRET: ${JWT_SECRET:-local-dev-secret}
+      RATE_LIMIT_PER_MIN: ${RATE_LIMIT_PER_MIN:-120}
+      # REGISTRY_CONTRACT_ID and ACCOUNT_FACTORY_CONTRACT_ID are written by
+      # init-local-stellar.sh and should be injected here via an env_file or
+      # explicit override when starting this service after the init script.
+      REGISTRY_CONTRACT_ID: ${REGISTRY_CONTRACT_ID:-}
+      ACCOUNT_FACTORY_CONTRACT_ID: ${ACCOUNT_FACTORY_CONTRACT_ID:-}
+      PASSKEY_ACCOUNT_WASM_HASH: ${PASSKEY_ACCOUNT_WASM_HASH:-}
+      REGISTRY_ADMIN_SECRET: ${REGISTRY_ADMIN_SECRET:-}
+      SPONSOR_SECRET: ${SPONSOR_SECRET:-}
+    ports:
+      - "${BACKEND_PORT:-4000}:4000"
+    profiles:
+      - full
+
+  # -------------------------------------------------------------------------
+  # Indexer (optional — only started with the "full" profile)
+  # -------------------------------------------------------------------------
+  indexer:
+    build:
+      context: .
+      dockerfile: indexer/Dockerfile
+    container_name: veritag-indexer-local
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      stellar-quickstart:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://veritag:veritag@postgres:5432/veritag
+      STELLAR_NETWORK: standalone
+      SOROBAN_RPC_URL: http://stellar-quickstart:8001
+      HORIZON_URL: http://stellar-quickstart:8000
+      NETWORK_PASSPHRASE: "Standalone Network ; February 2017"
+      REGISTRY_CONTRACT_ID: ${REGISTRY_CONTRACT_ID:-}
+      INDEXER_POLL_INTERVAL_MS: ${INDEXER_POLL_INTERVAL_MS:-2000}
+      INDEXER_CONFIRMATION_LEDGERS: ${INDEXER_CONFIRMATION_LEDGERS:-1}
+    profiles:
+      - full
+
+volumes:
+  postgres_local_data:
+  minio_local_data:

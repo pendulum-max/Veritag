@@ -63,3 +63,37 @@ jobs:
 
       - name: Run unit & integration test suites
         run: pnpm test
+
+  e2e:
+    name: Playwright E2E (Web)
+    runs-on: ubuntu-latest
+    needs: typescript
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium browser
+        run: pnpm --filter @veritag/web exec playwright install --with-deps chromium
+
+      - name: Run Playwright E2E suite
+        run: pnpm --filter @veritag/web test:e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: web/playwright-report/
+          retention-days: 7

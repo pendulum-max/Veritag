@@ -18,6 +18,7 @@ pub enum FactoryError {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum FactoryDataKey {
+    Admin,
     AccountWasmHash,
     DeployedBySalt(BytesN<32>),
 }
@@ -27,7 +28,10 @@ pub struct AccountFactoryContract;
 
 #[contractimpl]
 impl AccountFactoryContract {
-    pub fn __constructor(env: Env, account_wasm_hash: BytesN<32>) {
+    pub fn __constructor(env: Env, admin: Address, account_wasm_hash: BytesN<32>) {
+        env.storage()
+            .instance()
+            .set(&FactoryDataKey::Admin, &admin);
         env.storage()
             .instance()
             .set(&FactoryDataKey::AccountWasmHash, &account_wasm_hash);
@@ -96,6 +100,10 @@ impl AccountFactoryContract {
         env.storage()
             .instance()
             .get(&FactoryDataKey::AccountWasmHash)
+    }
+
+    pub fn get_admin(env: Env) -> Option<Address> {
+        env.storage().instance().get(&FactoryDataKey::Admin)
     }
 }
 

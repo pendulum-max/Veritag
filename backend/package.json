@@ -10,7 +10,8 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:load": "k6 run ../scripts/load-test.js"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.8",

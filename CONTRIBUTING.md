@@ -4,6 +4,8 @@ Thank you for your interest in contributing to **Veritag** — the open-source p
 
 We welcome contributors of all experience levels, including participants in the **Drips Stellar Wave Program**.
 
+> **New contributor?** Start with the comprehensive **[Contributor Guide](docs/contributor-guide.md)** — it covers step-by-step setup for macOS, Ubuntu/Debian, and Windows (WSL2), plus a troubleshooting runbook for the top-10 common setup issues.
+
 ---
 
 ## Table of Contents

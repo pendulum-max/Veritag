@@ -142,3 +142,44 @@ export function derivePasskeySalt(credentialId: Uint8Array | string): Buffer {
     typeof credentialId === "string" ? Buffer.from(credentialId, "utf8") : Buffer.from(credentialId);
   return sha256(Buffer.concat([Buffer.from("VERITAG_PASSKEY_SALT_V1:", "utf8"), idBytes]));
 }
+
+/**
+ * Parsed WebAuthn authenticatorData flags byte (byte index 32 per W3C WebAuthn spec).
+ */
+export interface AuthenticatorFlags {
+  /** Bit 0 (0x01): User Present (UP) */
+  up: boolean;
+  /** Bit 2 (0x04): User Verified (UV) */
+  uv: boolean;
+  /** Bit 3 (0x08): Backup Eligibility (BE) */
+  be: boolean;
+  /** Bit 4 (0x10): Backup State (BS) */
+  bs: boolean;
+  /** Bit 6 (0x40): Attested Credential Data included (AT) */
+  at: boolean;
+  /** Bit 7 (0x80): Extension Data included (ED) */
+  ed: boolean;
+  /** Raw flags byte value */
+  raw: number;
+}
+
+/**
+ * Parses the flags bitmask from a WebAuthn authenticatorData buffer (minimum 37 bytes).
+ */
+export function parseAuthenticatorDataFlags(authData: Uint8Array): AuthenticatorFlags {
+  if (authData.length < 37) {
+    throw new Error(
+      `Invalid WebAuthn authenticatorData length: expected at least 37 bytes, received ${authData.length}`,
+    );
+  }
+  const flags = authData[32] ?? 0;
+  return {
+    up: (flags & 0x01) !== 0,
+    uv: (flags & 0x04) !== 0,
+    be: (flags & 0x08) !== 0,
+    bs: (flags & 0x10) !== 0,
+    at: (flags & 0x40) !== 0,
+    ed: (flags & 0x80) !== 0,
+    raw: flags,
+  };
+}

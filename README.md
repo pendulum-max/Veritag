@@ -523,7 +523,26 @@ pnpm --filter indexer dev
 pnpm --filter web dev
 ```
 
-Open http://localhost:3000.
+Open http://localhost:3000.  
+API documentation (Swagger UI): http://localhost:4000/docs
+
+### 6a. Offline / local standalone setup (no Testnet required)
+
+For development on an airplane or in a low-connectivity environment, use the bundled Stellar Quickstart container instead of the public Testnet:
+
+```bash
+# Start the full local stack (Quickstart + Postgres + MinIO)
+docker compose -f docker-compose.local.yml up -d
+
+# Wait ~15 s for Quickstart to mine the first ledger, then:
+./scripts/init-local-stellar.sh   # funds accounts, deploys contracts, writes .env.local
+
+source .env.local
+pnpm --filter backend db:migrate
+pnpm --filter backend dev
+```
+
+The init script writes all contract IDs and keypairs to `.env.local` and prints a summary. See [`docs/contributor-guide.md`](docs/contributor-guide.md) for the full walkthrough.
 
 ### 7. Seed demo data
 
@@ -643,7 +662,9 @@ Playwright flows: verify page states, activation, transfer, claim.
 
 ## Contributing
 
-Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for full local setup, testing, and Drips Stellar Wave contributor guidelines. Please:
+Contributions are welcome. New contributors should start with **[docs/contributor-guide.md](docs/contributor-guide.md)** — it covers step-by-step setup for macOS, Ubuntu/Debian, and Windows (WSL2), architecture diagrams, and a troubleshooting runbook for the most common setup issues.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for PR guidelines and Drips Stellar Wave contributor norms. Please:
 
 1. Open an issue to discuss significant changes first.
 2. Fork the repo and create a feature branch.

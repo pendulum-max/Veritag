@@ -4,6 +4,17 @@ Base URL: `http://localhost:4000`
 
 Authenticated endpoints require `Authorization: Bearer <jwt>` obtained via either SEP-10 Ed25519 challenge-response (`G...` accounts) or Soroban `secp256r1` Passkey Smart Account challenge-response (`C...` accounts).
 
+## Interactive documentation
+
+An interactive **Swagger UI** is served at:
+
+| URL | Description |
+|---|---|
+| `GET /docs` | Swagger UI — try every endpoint in the browser |
+| `GET /api/openapi.json` | Raw OpenAPI 3.0 JSON spec (import into Postman, Insomnia, etc.) |
+
+The spec covers every endpoint listed below and includes request/response schemas, authentication requirements, and example values.
+
 ---
 
 ## Authentication & Passkey Wallets

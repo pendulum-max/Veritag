@@ -1,0 +1,112 @@
+{
+  "nav": {
+    "verify": "Verificar",
+    "owner": "Propietario",
+    "service": "Servicio",
+    "brands": "Marcas",
+    "connectWallet": "Conectar Billetera",
+    "connecting": "Conectando...",
+    "disconnect": "Desconectar Billetera",
+    "language": "Idioma"
+  },
+  "verification": {
+    "title": "Verificación de Autenticidad del Producto",
+    "subtitle": "Escanee o ingrese los detalles del producto para verificar su procedencia en Stellar Soroban.",
+    "authenticInactive": "Auténtico — Listo para Activar",
+    "authenticActive": "Auténtico — Garantía Activa",
+    "alreadyClaimed": "Advertencia — Ya Activado",
+    "flagged": "Marcado para Revisión",
+    "recalled": "Producto Retirado del Mercado",
+    "retired": "Unidad Retirada",
+    "unknown": "Producto Desconocido / No Verificado",
+    "scanQr": "Escanear QR del Producto",
+    "checkSerial": "Verificar Serie"
+  },
+  "activation": {
+    "title": "Activar Garantía",
+    "subtitle": "Ingrese el secreto raspable para reclamar la propiedad en la cadena.",
+    "scratchSecretLabel": "Secreto Raspable",
+    "activateButton": "Activar y Reclamar Propiedad",
+    "activating": "Activando en Soroban...",
+    "success": "Garantía activada y anclada a su billetera."
+  },
+  "ownership": {
+    "portalTitle": "Mis Productos Auténticos y Garantías",
+    "portalSubtitle": "Gestione sus unidades, genere códigos de transferencia únicos o presente reclamos de garantía sin necesidad de XLM.",
+    "createPasskeyWallet": "Crear Billetera Passkey",
+    "signInPasskey": "Iniciar sesión con Passkey (WebAuthn)",
+    "quickOwnerSigner": "Firmante Rápido de Propietario",
+    "daysWarrantyLeft": "{{days}} días de garantía restantes",
+    "createTransferCode": "Crear Código de Transferencia",
+    "transferCodeLabel": "Código Único de Transferencia de Reventa",
+    "redeemTitle": "Canjear Transferencia de Reventa",
+    "redeemSubtitle": "¿Comprando un artículo de segunda mano? Ingrese el ID de la unidad y el código único del vendedor para reclamar la propiedad.",
+    "unitIdLabel": "ID de Unidad",
+    "transferCodeInputLabel": "Código de Transferencia Único",
+    "redeemButton": "Canjear y Transferir Propiedad"
+  },
+  "warranty": {
+    "claimTitle": "Enviar Reclamo de Garantía",
+    "claimSubtitle": "Seleccione su unidad, describa el defecto y adjunte hasta 3 fotos de evidencia.",
+    "selectUnit": "Seleccionar Unidad",
+    "issueCategory": "Categoría del Problema",
+    "categories": {
+      "hardware": "Defecto de Hardware",
+      "battery": "Problema de Batería / Energía",
+      "display": "Daño de Pantalla / Cosmético",
+      "water": "Daño por Agua / Físico",
+      "calibration": "Sensor / Calibración",
+      "other": "Otro"
+    },
+    "serviceCenter": "Centro de Servicio Autorizado (G...)",
+    "description": "Descripción del Defecto",
+    "descriptionPlaceholder": "Describa el problema, cuándo comenzó y cualquier daño visible...",
+    "evidencePhotos": "Fotos de Evidencia (hasta 3)",
+    "dropzoneHint": "Arrastre y suelte fotos aquí, o haga clic para buscar (etiqueta de serie, daño, recibo)",
+    "compressing": "Comprimiendo imágenes...",
+    "uploading": "Subiendo evidencia y calculando SHA-256...",
+    "submitClaim": "Enviar Reclamo de Garantía",
+    "submitting": "Enviando Reclamo...",
+    "confirmationTitle": "Reclamo de Garantía Enviado",
+    "referenceId": "ID de Reclamo de Referencia",
+    "evidenceDigest": "Resumen SHA-256 de Evidencia",
+    "fileAnother": "Presentar Otro Reclamo"
+  },
+  "recalls": {
+    "bannerTitle": "Aviso de Retiro por Seguridad",
+    "bannerMessage": "Este lote de producción ha sido retirado por el fabricante. Deje de usar el producto y contacte a un centro de servicio autorizado.",
+    "recalledBadge": "Retirado"
+  },
+  "wallet": {
+    "modalTitle": "Conectar Billetera Stellar",
+    "modalSubtitle": "Elija un proveedor de billetera para firmar transacciones y gestionar sus activos Veritag.",
+    "recommended": "Recomendado",
+    "installed": "Instalada",
+    "notInstalled": "No Detectada",
+    "zeroInstall": "Sin Extensión",
+    "passkeyName": "Cuenta Inteligente Passkey",
+    "passkeyDesc": "Billetera biométrica FaceID / TouchID / Windows Hello (secp256r1).",
+    "freighterName": "Extensión Freighter",
+    "freighterDesc": "Billetera oficial de extensión para navegador Stellar.",
+    "xbullName": "Billetera xBull",
+    "xbullDesc": "Billetera multiplataforma para Stellar y Soroban.",
+    "albedoName": "Albedo",
+    "albedoDesc": "Firma instantánea en ventana emergente sin instalación.",
+    "errorDiagnosticTitle": "Diagnóstico de Conexión"
+  },
+  "passkey": {
+    "onboardingTitle": "Cree su Billetera Inteligente Passkey",
+    "onboardingSubtitle": "Use la biometría de su dispositivo para firmar transacciones de Stellar Soroban de forma segura, sin contraseñas ni frases semilla.",
+    "faceIdLabel": "Apple Face ID",
+    "touchIdLabel": "Touch ID",
+    "androidBiometricsLabel": "Android y Windows Hello",
+    "checkingSupport": "Verificando soporte biométrico del dispositivo...",
+    "supportedMessage": "Su dispositivo admite llaves de acceso respaldadas por hardware.",
+    "fallbackTitle": "Biometría de Hardware No Disponible",
+    "fallbackGuidance": "Su navegador o dispositivo no reportó un autenticador biométrico integrado. Aún puede usar una llave de seguridad física (ej. YubiKey), un gestor de contraseñas o nuestro respaldo WebCrypto.",
+    "troubleshootTitle": "¿El Navegador Bloquea las Solicitudes?",
+    "troubleshootSteps": "Asegúrese de que las ventanas emergentes y WebAuthn estén habilitados para este sitio y verifique que usa HTTPS o localhost.",
+    "createButton": "Crear Billetera Passkey",
+    "creatingButton": "Esperando Solicitud Biométrica..."
+  }
+}

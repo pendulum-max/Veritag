@@ -1,0 +1,112 @@
+{
+  "nav": {
+    "verify": "Verify",
+    "owner": "Owner",
+    "service": "Service",
+    "brands": "Brands",
+    "connectWallet": "Connect Wallet",
+    "connecting": "Connecting...",
+    "disconnect": "Disconnect Wallet",
+    "language": "Language"
+  },
+  "verification": {
+    "title": "Product Authenticity Verification",
+    "subtitle": "Scan or enter product details to verify provenance on Stellar Soroban.",
+    "authenticInactive": "Authentic — Ready to Activate",
+    "authenticActive": "Authentic — Warranty Active",
+    "alreadyClaimed": "Warning — Already Activated",
+    "flagged": "Flagged for Review",
+    "recalled": "Product Recalled",
+    "retired": "Unit Retired",
+    "unknown": "Unknown / Unverified Product",
+    "scanQr": "Scan Product QR",
+    "checkSerial": "Verify Serial"
+  },
+  "activation": {
+    "title": "Activate Warranty",
+    "subtitle": "Enter the scratch-off secret to claim on-chain ownership.",
+    "scratchSecretLabel": "Scratch-off Secret",
+    "activateButton": "Activate & Claim Ownership",
+    "activating": "Activating on Soroban...",
+    "success": "Warranty activated and anchored to your wallet."
+  },
+  "ownership": {
+    "portalTitle": "My Authentic Products & Warranties",
+    "portalSubtitle": "Manage owned units, generate one-time resale transfer codes, or file warranty claims with zero XLM required.",
+    "createPasskeyWallet": "Create Passkey Wallet",
+    "signInPasskey": "Sign in with Passkey (WebAuthn)",
+    "quickOwnerSigner": "Quick Owner Signer",
+    "daysWarrantyLeft": "{{days}} days warranty left",
+    "createTransferCode": "Create Resale Transfer Code",
+    "transferCodeLabel": "One-Time Resale Transfer Code",
+    "redeemTitle": "Redeem Resale Transfer",
+    "redeemSubtitle": "Buying a second-hand item? Enter the Unit ID and seller's one-time code to claim ownership and preserve its remaining warranty.",
+    "unitIdLabel": "Unit ID",
+    "transferCodeInputLabel": "One-Time Transfer Code",
+    "redeemButton": "Redeem & Transfer Ownership"
+  },
+  "warranty": {
+    "claimTitle": "Submit Warranty Claim",
+    "claimSubtitle": "Select your unit, describe the defect, and attach up to 3 evidence photos.",
+    "selectUnit": "Select Unit",
+    "issueCategory": "Issue Category",
+    "categories": {
+      "hardware": "Hardware Defect",
+      "battery": "Battery / Power Issue",
+      "display": "Display / Cosmetic Damage",
+      "water": "Water / Physical Damage",
+      "calibration": "Sensor / Calibration",
+      "other": "Other"
+    },
+    "serviceCenter": "Authorized Service Center (G...)",
+    "description": "Defect Description",
+    "descriptionPlaceholder": "Describe the issue, when it started, and any visible damage...",
+    "evidencePhotos": "Evidence Photos (up to 3)",
+    "dropzoneHint": "Drag & drop photos here, or click to browse (serial sticker, damage area, receipt)",
+    "compressing": "Compressing images...",
+    "uploading": "Uploading evidence & computing SHA-256...",
+    "submitClaim": "Submit Warranty Claim",
+    "submitting": "Submitting Claim...",
+    "confirmationTitle": "Warranty Claim Submitted",
+    "referenceId": "Reference Claim ID",
+    "evidenceDigest": "Evidence SHA-256 Digest",
+    "fileAnother": "File Another Claim"
+  },
+  "recalls": {
+    "bannerTitle": "Safety Recall Notice",
+    "bannerMessage": "This production batch has been recalled by the manufacturer. Please stop using the product and contact an authorized service center.",
+    "recalledBadge": "Recalled"
+  },
+  "wallet": {
+    "modalTitle": "Connect Stellar Wallet",
+    "modalSubtitle": "Choose a wallet provider to sign transactions and manage your Veritag assets.",
+    "recommended": "Recommended",
+    "installed": "Installed",
+    "notInstalled": "Not Detected",
+    "zeroInstall": "No Extension Needed",
+    "passkeyName": "Passkey Smart Account",
+    "passkeyDesc": "Biometric FaceID / TouchID / Windows Hello smart wallet (secp256r1).",
+    "freighterName": "Freighter Extension",
+    "freighterDesc": "Official Stellar browser extension wallet.",
+    "xbullName": "xBull Wallet",
+    "xbullDesc": "Multi-platform Stellar & Soroban browser wallet.",
+    "albedoName": "Albedo",
+    "albedoDesc": "Instant browser popup signing with zero installation.",
+    "errorDiagnosticTitle": "Connection Diagnostic"
+  },
+  "passkey": {
+    "onboardingTitle": "Create Your Passkey Smart Wallet",
+    "onboardingSubtitle": "Use your device biometrics to sign Stellar Soroban transactions securely — no passwords or seed phrases.",
+    "faceIdLabel": "Apple Face ID",
+    "touchIdLabel": "Touch ID",
+    "androidBiometricsLabel": "Android & Windows Hello",
+    "checkingSupport": "Checking device biometric support...",
+    "supportedMessage": "Your device supports hardware-backed platform passkeys.",
+    "fallbackTitle": "Hardware Biometrics Unavailable",
+    "fallbackGuidance": "Your browser or device did not report a built-in biometric authenticator. You can still use a hardware security key (e.g., YubiKey), a password manager passkey, or our WebCrypto fallback.",
+    "troubleshootTitle": "Browser Blocking Prompts?",
+    "troubleshootSteps": "Ensure popups and WebAuthn are enabled for this site, and verify you are using HTTPS or localhost.",
+    "createButton": "Create Passkey Wallet",
+    "creatingButton": "Waiting for Biometric Prompt..."
+  }
+}

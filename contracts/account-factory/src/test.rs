@@ -1,4 +1,5 @@
 use super::*;
+use soroban_sdk::testutils::Address as _;
 
 const PASSKEY_ACCOUNT_WASM: &[u8] =
     include_bytes!("../../../target/wasm32v1-none/release/passkey_account.wasm");
@@ -6,10 +7,12 @@ const PASSKEY_ACCOUNT_WASM: &[u8] =
 #[test]
 fn test_deterministic_address_prediction_and_deployment() {
     let env = Env::default();
+    let admin = Address::generate(&env);
     let wasm_hash = env.deployer().upload_contract_wasm(PASSKEY_ACCOUNT_WASM);
-    let factory_id = env.register(AccountFactoryContract, (wasm_hash.clone(),));
+    let factory_id = env.register(AccountFactoryContract, (admin.clone(), wasm_hash.clone()));
     let client = AccountFactoryContractClient::new(&env, &factory_id);
 
+    assert_eq!(client.get_admin(), Some(admin));
     assert_eq!(client.get_wasm_hash(), Some(wasm_hash));
 
     let salt_a = BytesN::from_array(&env, &[0xaa; 32]);

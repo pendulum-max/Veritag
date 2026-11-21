@@ -1,0 +1,112 @@
+{
+  "nav": {
+    "verify": "验证",
+    "owner": "所有者",
+    "service": "服务",
+    "brands": "品牌",
+    "connectWallet": "连接钱包",
+    "connecting": "连接中...",
+    "disconnect": "断开钱包",
+    "language": "语言"
+  },
+  "verification": {
+    "title": "产品真伪验证",
+    "subtitle": "扫描或输入产品信息，在 Stellar Soroban 链上验证来源。",
+    "authenticInactive": "正品 — 可激活",
+    "authenticActive": "正品 — 保修生效中",
+    "alreadyClaimed": "警告 — 已被激活",
+    "flagged": "已标记待审查",
+    "recalled": "产品已召回",
+    "retired": "设备已报废",
+    "unknown": "未知 / 未验证产品",
+    "scanQr": "扫描产品二维码",
+    "checkSerial": "验证序列号"
+  },
+  "activation": {
+    "title": "激活保修",
+    "subtitle": "输入刮刮卡密钥以在链上认领所有权。",
+    "scratchSecretLabel": "刮刮卡密钥",
+    "activateButton": "激活并认领所有权",
+    "activating": "正在 Soroban 上激活...",
+    "success": "保修已激活并绑定至您的钱包。"
+  },
+  "ownership": {
+    "portalTitle": "我的正品与保修",
+    "portalSubtitle": "管理名下设备、生成一次性转售转移码或提交保修申请（无需 XLM）。",
+    "createPasskeyWallet": "创建通行密钥钱包",
+    "signInPasskey": "使用通行密钥登录 (WebAuthn)",
+    "quickOwnerSigner": "快速所有者签名器",
+    "daysWarrantyLeft": "剩余 {{days}} 天保修",
+    "createTransferCode": "创建转售转移码",
+    "transferCodeLabel": "一次性转售转移码",
+    "redeemTitle": "兑换转售转移",
+    "redeemSubtitle": "购买二手商品？输入设备 ID 和卖家的一次性转移码以认领所有权并保留剩余保修。",
+    "unitIdLabel": "设备 ID",
+    "transferCodeInputLabel": "一次性转移码",
+    "redeemButton": "兑换并转移所有权"
+  },
+  "warranty": {
+    "claimTitle": "提交保修申请",
+    "claimSubtitle": "选择您的设备，描述故障并上传最多 3 张凭证照片。",
+    "selectUnit": "选择设备",
+    "issueCategory": "故障类别",
+    "categories": {
+      "hardware": "硬件故障",
+      "battery": "电池 / 电源问题",
+      "display": "屏幕 / 外观损伤",
+      "water": "进水 / 物理损坏",
+      "calibration": "传感器 / 校准问题",
+      "other": "其他"
+    },
+    "serviceCenter": "授权服务中心地址 (G...)",
+    "description": "故障描述",
+    "descriptionPlaceholder": "请描述问题现象、发生时间及任何可见损坏...",
+    "evidencePhotos": "凭证照片（最多 3 张）",
+    "dropzoneHint": "拖放照片至此，或点击选择文件（序列号贴纸、损坏部位、购买凭证）",
+    "compressing": "正在压缩图片...",
+    "uploading": "正在上传凭证并计算 SHA-256 摘要...",
+    "submitClaim": "提交保修申请",
+    "submitting": "正在提交...",
+    "confirmationTitle": "保修申请已提交",
+    "referenceId": "参考申请编号",
+    "evidenceDigest": "凭证 SHA-256 摘要",
+    "fileAnother": "提交另一份申请"
+  },
+  "recalls": {
+    "bannerTitle": "安全召回通知",
+    "bannerMessage": "该生产批次已被制造商召回。请停止使用该产品并联系授权服务中心。",
+    "recalledBadge": "已召回"
+  },
+  "wallet": {
+    "modalTitle": "连接 Stellar 钱包",
+    "modalSubtitle": "选择钱包提供商以签署交易并管理您的 Veritag 资产。",
+    "recommended": "推荐",
+    "installed": "已安装",
+    "notInstalled": "未检测到",
+    "zeroInstall": "无需插件",
+    "passkeyName": "Passkey 智能账户",
+    "passkeyDesc": "支持 FaceID / TouchID / Windows Hello 的生物识别智能钱包 (secp256r1)。",
+    "freighterName": "Freighter 插件",
+    "freighterDesc": "Stellar 官方浏览器扩展钱包。",
+    "xbullName": "xBull 钱包",
+    "xbullDesc": "跨平台 Stellar 与 Soroban 浏览器钱包。",
+    "albedoName": "Albedo",
+    "albedoDesc": "零安装浏览器弹窗即时签名。",
+    "errorDiagnosticTitle": "连接诊断"
+  },
+  "passkey": {
+    "onboardingTitle": "创建您的 Passkey 智能钱包",
+    "onboardingSubtitle": "使用设备生物识别安全签署 Stellar Soroban 交易 — 无需密码或助记词。",
+    "faceIdLabel": "Apple Face ID",
+    "touchIdLabel": "Touch ID",
+    "androidBiometricsLabel": "Android 与 Windows Hello",
+    "checkingSupport": "正在检测设备生物识别支持...",
+    "supportedMessage": "您的设备支持硬件级平台通行密钥。",
+    "fallbackTitle": "硬件生物识别不可用",
+    "fallbackGuidance": "您的浏览器或设备未检测到内置生物识别认证器。您仍可使用硬件安全密钥（如 YubiKey）、密码管理器或我们的 WebCrypto 备选方案。",
+    "troubleshootTitle": "浏览器拦截了弹窗提示？",
+    "troubleshootSteps": "请确保此网站已允许弹窗和 WebAuthn 权限，并确认您正在使用 HTTPS 或 localhost。",
+    "createButton": "创建 Passkey 钱包",
+    "creatingButton": "等待生物识别验证..."
+  }
+}

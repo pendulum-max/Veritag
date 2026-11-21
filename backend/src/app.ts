@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { type BackendConfig, loadConfig } from "./config.js";
 import { InMemoryRepository, type Repository } from "./db/repository.js";
 import { createV1Router } from "./routes/api.js";
+import { registerOpenApiRoutes } from "./routes/openapi.js";
 import { AuthService, SlidingWindowRateLimiter } from "./services/auth.js";
 import { type RelayerService, StellarFeeSponsorService } from "./services/relayer.js";
 import { SorobanTransactionService } from "./services/soroban-tx.js";
@@ -62,6 +63,29 @@ export function createApp(options: CreateAppOptions = {}): Hono {
     }),
   );
 
+  app.get("/api/auth/sep10/challenge", (c) => {
+    const account = c.req.query("account")?.trim() ?? "";
+    if (!account) {
+      return c.json({ error: "Missing required query parameter: account" }, 400);
+    }
+    let homeDomain = "veritag.local";
+    try {
+      homeDomain = new URL(config.appBaseUrl).host || homeDomain;
+    } catch {
+      // Fallback to default homeDomain when appBaseUrl is not a full URL
+    }
+    try {
+      const challenge = auth.createSep10Challenge(account, {
+        serverSecret: config.registryAdminSecret || config.sponsorSecret,
+        networkPassphrase: config.networkPassphrase,
+        homeDomain,
+      });
+      return c.json(challenge);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : "Invalid account" }, 400);
+    }
+  });
+
   app.route(
     "/v1",
     createV1Router({
@@ -76,6 +100,9 @@ export function createApp(options: CreateAppOptions = {}): Hono {
       tomlFetch: options.tomlFetch,
     }),
   );
+
+  // OpenAPI JSON spec + Swagger UI
+  registerOpenApiRoutes(app);
 
   return app;
 }

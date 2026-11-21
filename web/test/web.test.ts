@@ -4,17 +4,22 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import axe from "axe-core";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BatchUploadWizard, validateBatchCsv } from "../components/BatchUploadWizard.js";
-import { MerkleTreeVisualizer } from "../components/MerkleTreeVisualizer.js";
-import { AppThemeProvider, ThemeToggle } from "../components/ThemeToggle.js";
+import {
+  buildCertificatePdfBytes,
+  buildCertificateSvg,
+} from "../lib/certificate-generator.js";
 import { registerPasskeySmartWallet } from "../lib/passkey.js";
 import {
   buildUnsignedRegistryTxXdr,
+  detectInstalledWallets,
   getFileDownloadUrl,
+  isValidGtinFormat,
   PUBLIC_CONFIG,
+  resolveGs1DigitalLink,
   signRegistryTxWithSecret,
   verifyProduct,
 } from "../lib/stellar.js";
+import { dispatchWalletConnection, type WalletSession } from "../lib/wallet-context.js";
 
 describe("@veritag/web verification & passkey wallet logic", () => {
   beforeEach(() => {
@@ -77,6 +82,68 @@ describe("@veritag/web verification & passkey wallet logic", () => {
       method: "activate",
     });
     expect(passkeyUnsignedXdr.length).toBeGreaterThan(20);
+  });
+
+  it("generates Guilloche SVG and vector PDF warranty certificates", () => {
+    const certData = {
+      unitId: "55aa66bb77cc88dd99ee00ff112233445566778899aabbccddeeff0011223344",
+      model: "Chronos Titan Automatic 41mm",
+      serial: "CH-2026-ACTIVE-04",
+      brandDomain: "chronos-watches.swiss",
+      ownerAddress: "GB7TAYRUZGE6TVT7NHP5SMIZRNQA6PLM423EYISAOAP3MKYIQMVYP2JO",
+      txHash: "4e9b2f7a1c8d3065a2b4c6d8e0f123456789abcdef0123456789abcdef012345",
+      expiresAt: "2028-08-15",
+      warrantyDaysRemaining: 630,
+      claimsUsed: 1,
+    };
+
+    const svg = buildCertificateSvg(certData);
+    expect(svg).toContain("<svg");
+    expect(svg).toContain("Certificate of Authenticity &amp; Warranty");
+    expect(svg).toContain(certData.ownerAddress);
+    expect(svg).toContain(certData.txHash);
+    expect(svg).toContain(certData.expiresAt);
+    expect(svg).toContain("<path d=");
+
+    const pdfBytes = buildCertificatePdfBytes(certData);
+    const pdfText = new TextDecoder().decode(pdfBytes);
+    expect(pdfText.startsWith("%PDF-1.4")).toBe(true);
+    expect(pdfText.trimEnd().endsWith("%%EOF")).toBe(true);
+    expect(pdfText).toContain(certData.ownerAddress);
+    expect(pdfText).toContain(certData.txHash);
+    expect(pdfText).toContain(certData.expiresAt);
+  });
+
+  it("resolves GS1 Digital Link GTIN/serial paths and rejects invalid GTINs", async () => {
+    expect(isValidGtinFormat("01234567890128")).toBe(true);
+    expect(isValidGtinFormat("12345678")).toBe(true);
+    expect(isValidGtinFormat("INVALID-GTIN")).toBe(false);
+
+    const invalid = await resolveGs1DigitalLink("ABC", "CH-2026-000101");
+    expect(invalid).toBeNull();
+
+    const fallbackResolved = await resolveGs1DigitalLink("01234567890128", "CH-2026-000101");
+    expect(fallbackResolved).not.toBeNull();
+    expect(fallbackResolved?.source).toBe("demo-fallback");
+    expect(fallbackResolved?.redirectPath).toContain("/v/");
+    expect(fallbackResolved?.redirectPath).toContain("/CH-2026-000101");
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          brandAddress: "GABC1234567890BRAND",
+          brandDomain: "atelier.example",
+          batchId: "batch-999",
+        }),
+      }),
+    );
+
+    const apiResolved = await resolveGs1DigitalLink("01234567890128", "SER-42");
+    expect(apiResolved?.source).toBe("api");
+    expect(apiResolved?.brandDomain).toBe("atelier.example");
+    expect(apiResolved?.redirectPath).toBe("/v/GABC1234567890BRAND/batch-999/SER-42");
   });
 });
 

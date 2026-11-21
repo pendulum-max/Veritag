@@ -1,0 +1,112 @@
+{
+  "nav": {
+    "verify": "Prüfen",
+    "owner": "Eigentümer",
+    "service": "Service",
+    "brands": "Marken",
+    "connectWallet": "Wallet Verbinden",
+    "connecting": "Verbinde...",
+    "disconnect": "Wallet Trennen",
+    "language": "Sprache"
+  },
+  "verification": {
+    "title": "Produkt-Echtheitsprüfung",
+    "subtitle": "Scannen oder geben Sie Produktdetails ein, um die Herkunft auf Stellar Soroban zu prüfen.",
+    "authenticInactive": "Authentisch — Bereit zur Aktivierung",
+    "authenticActive": "Authentisch — Garantie Aktiv",
+    "alreadyClaimed": "Warnung — Bereits Aktiviert",
+    "flagged": "Zur Prüfung Markiert",
+    "recalled": "Produkt Zurückgerufen",
+    "retired": "Einheit Stillgelegt",
+    "unknown": "Unbekanntes / Nicht Verifiziertes Produkt",
+    "scanQr": "Produkt-QR Scannen",
+    "checkSerial": "Seriennummer Prüfen"
+  },
+  "activation": {
+    "title": "Garantie Aktivieren",
+    "subtitle": "Geben Sie das Rubbel-Geheimnis ein, um das Eigentum auf der Blockchain zu beanspruchen.",
+    "scratchSecretLabel": "Rubbel-Geheimnis",
+    "activateButton": "Aktivieren & Eigentum Beanspruchen",
+    "activating": "Aktiviere auf Soroban...",
+    "success": "Garantie aktiviert und in Ihrer Wallet verankert."
+  },
+  "ownership": {
+    "portalTitle": "Meine Authentischen Produkte & Garantien",
+    "portalSubtitle": "Verwalten Sie Ihre Einheiten, erstellen Sie einmalige Weiterverkaufscodes oder melden Sie Garantiefälle ohne XLM.",
+    "createPasskeyWallet": "Passkey-Wallet Erstellen",
+    "signInPasskey": "Mit Passkey anmelden (WebAuthn)",
+    "quickOwnerSigner": "Schnell-Eigentümer-Signierer",
+    "daysWarrantyLeft": "Noch {{days}} Tage Garantie",
+    "createTransferCode": "Transfercode Erstellen",
+    "transferCodeLabel": "Einmaliger Weiterverkaufs-Transfercode",
+    "redeemTitle": "Weiterverkauf Einlösen",
+    "redeemSubtitle": "Kaufen Sie einen gebrauchten Artikel? Geben Sie die Unit-ID und den Einmalcode des Verkäufers ein.",
+    "unitIdLabel": "Unit-ID",
+    "transferCodeInputLabel": "Einmaliger Transfercode",
+    "redeemButton": "Einlösen & Eigentum Übertragen"
+  },
+  "warranty": {
+    "claimTitle": "Garantieantrag Einreichen",
+    "claimSubtitle": "Wählen Sie Ihr Gerät, beschreiben Sie den Defekt und fügen Sie bis zu 3 Beweisfotos bei.",
+    "selectUnit": "Gerät Auswählen",
+    "issueCategory": "Problemkategorie",
+    "categories": {
+      "hardware": "Hardware-Defekt",
+      "battery": "Akku- / Stromproblem",
+      "display": "Display- / Kosmetischer Schaden",
+      "water": "Wasser- / Physischer Schaden",
+      "calibration": "Sensor / Kalibrierung",
+      "other": "Sonstiges"
+    },
+    "serviceCenter": "Autorisiertes Servicecenter (G...)",
+    "description": "Fehlerbeschreibung",
+    "descriptionPlaceholder": "Beschreiben Sie das Problem, wann es auftrat und sichtbare Schäden...",
+    "evidencePhotos": "Beweisfotos (bis zu 3)",
+    "dropzoneHint": "Fotos hierher ziehen oder klicken (Seriennummer, Schaden, Kaufbeleg)",
+    "compressing": "Komprimiere Bilder...",
+    "uploading": "Lade Beweise hoch & berechne SHA-256...",
+    "submitClaim": "Garantieantrag Absenden",
+    "submitting": "Sende Antrag...",
+    "confirmationTitle": "Garantieantrag Eingereicht",
+    "referenceId": "Referenz-Antrags-ID",
+    "evidenceDigest": "Beweis-SHA-256-Prüfsumme",
+    "fileAnother": "Weiteren Antrag Stellen"
+  },
+  "recalls": {
+    "bannerTitle": "Sicherheitsrückruf-Hinweis",
+    "bannerMessage": "Diese Produktionscharge wurde vom Hersteller zurückgerufen. Bitte verwenden Sie das Produkt nicht mehr und kontaktieren Sie ein Servicecenter.",
+    "recalledBadge": "Zurückgerufen"
+  },
+  "wallet": {
+    "modalTitle": "Stellar Wallet Verbinden",
+    "modalSubtitle": "Wählen Sie einen Wallet-Anbieter zum Signieren von Transaktionen und Verwalten Ihrer Veritag-Assets.",
+    "recommended": "Empfohlen",
+    "installed": "Installiert",
+    "notInstalled": "Nicht Erkannt",
+    "zeroInstall": "Keine Erweiterung Nötig",
+    "passkeyName": "Passkey Smart Account",
+    "passkeyDesc": "Biometrische FaceID / TouchID / Windows Hello Wallet (secp256r1).",
+    "freighterName": "Freighter Erweiterung",
+    "freighterDesc": "Offizielle Stellar Browser-Erweiterung.",
+    "xbullName": "xBull Wallet",
+    "xbullDesc": "Plattformübergreifende Stellar & Soroban Wallet.",
+    "albedoName": "Albedo",
+    "albedoDesc": "Sofortiges Browser-Popup-Signieren ohne Installation.",
+    "errorDiagnosticTitle": "Verbindungsdiagnose"
+  },
+  "passkey": {
+    "onboardingTitle": "Passkey Smart Wallet Erstellen",
+    "onboardingSubtitle": "Nutzen Sie die Biometrie Ihres Geräts zum sicheren Signieren von Stellar Soroban-Transaktionen — ohne Passwörter oder Seed-Phrasen.",
+    "faceIdLabel": "Apple Face ID",
+    "touchIdLabel": "Touch ID",
+    "androidBiometricsLabel": "Android & Windows Hello",
+    "checkingSupport": "Prüfe biometrische Geräteunterstützung...",
+    "supportedMessage": "Ihr Gerät unterstützt hardwaregestützte Plattform-Passkeys.",
+    "fallbackTitle": "Hardware-Biometrie Nicht Verfügbar",
+    "fallbackGuidance": "Ihr Browser oder Gerät meldete keinen integrierten biometrischen Authentifikator. Sie können einen Sicherheitsschlüssel (z. B. YubiKey), einen Passwortmanager oder unseren WebCrypto-Fallback nutzen.",
+    "troubleshootTitle": "Browser blockiert Eingabeaufforderungen?",
+    "troubleshootSteps": "Stellen Sie sicher, dass Popups und WebAuthn für diese Seite aktiviert sind und Sie HTTPS oder localhost verwenden.",
+    "createButton": "Passkey-Wallet Erstellen",
+    "creatingButton": "Warte auf biometrische Bestätigung..."
+  }
+}

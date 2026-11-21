@@ -166,3 +166,55 @@ export async function signWithPasskeyAssertion(
     signatureHex: bufferToHex(compactSig),
   };
 }
+
+export interface PasskeySupportStatus {
+  webAuthnSupported: boolean;
+  platformAuthenticatorAvailable: boolean;
+  platformHint: "apple" | "windows" | "android" | "other";
+}
+
+function detectPlatformHint(): PasskeySupportStatus["platformHint"] {
+  if (typeof navigator === "undefined") return "other";
+  const ua = navigator.userAgent.toLowerCase();
+  if (ua.includes("iphone") || ua.includes("ipad") || ua.includes("mac os") || ua.includes("macintosh")) {
+    return "apple";
+  }
+  if (ua.includes("android")) {
+    return "android";
+  }
+  if (ua.includes("windows")) {
+    return "windows";
+  }
+  return "other";
+}
+
+/**
+ * Checks whether WebAuthn and a user-verifying platform biometric authenticator
+ * (FaceID, TouchID, Windows Hello, Android Biometrics) are available in the current browser.
+ */
+export async function checkPlatformAuthenticatorSupport(): Promise<PasskeySupportStatus> {
+  const platformHint = detectPlatformHint();
+  if (typeof window === "undefined" || typeof window.PublicKeyCredential === "undefined") {
+    return {
+      webAuthnSupported: false,
+      platformAuthenticatorAvailable: false,
+      platformHint,
+    };
+  }
+
+  let platformAuthenticatorAvailable = false;
+  try {
+    if (typeof window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === "function") {
+      platformAuthenticatorAvailable =
+        await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+    }
+  } catch {
+    platformAuthenticatorAvailable = false;
+  }
+
+  return {
+    webAuthnSupported: true,
+    platformAuthenticatorAvailable,
+    platformHint,
+  };
+}

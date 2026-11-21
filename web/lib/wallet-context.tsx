@@ -14,10 +14,12 @@ import { registerPasskeySmartWallet, signWithPasskeyAssertion } from "./passkey"
 import {
   buildUnsignedRegistryTxXdr,
   PUBLIC_CONFIG,
+  requestAlbedoPublicKey,
   signRegistryTxWithSecret,
+  signTxWithAlbedo,
 } from "./stellar";
 
-export type WalletType = "freighter" | "passkey" | "keypair";
+export type WalletType = "freighter" | "xbull" | "albedo" | "passkey" | "keypair";
 export type DemoRole = "brand" | "owner" | "service";
 
 export interface WalletSession {
@@ -29,18 +31,57 @@ export interface WalletSession {
   credentialId?: string;
 }
 
+export interface WalletConnectorHandlers {
+  freighter: () => Promise<WalletSession | null>;
+  xbull: () => Promise<WalletSession | null>;
+  albedo: () => Promise<WalletSession | null>;
+  passkey: (label?: string) => Promise<WalletSession | null>;
+  keypair: (role?: DemoRole) => Promise<WalletSession | null>;
+}
+
+/**
+ * Pure dispatcher that routes a `WalletType` selection to the corresponding connector handler.
+ */
+export async function dispatchWalletConnection(
+  type: WalletType,
+  handlers: WalletConnectorHandlers,
+  options?: { label?: string; role?: DemoRole },
+): Promise<WalletSession | null> {
+  switch (type) {
+    case "freighter":
+      return handlers.freighter();
+    case "xbull":
+      return handlers.xbull();
+    case "albedo":
+      return handlers.albedo();
+    case "passkey":
+      return handlers.passkey(options?.label);
+    case "keypair":
+      return handlers.keypair(options?.role ?? "owner");
+  }
+}
+
 interface WalletContextValue {
   session: WalletSession | null;
+  activeConnector: WalletType | null;
   connecting: boolean;
   error: string | null;
   connectFreighter: () => Promise<WalletSession | null>;
+  connectXBull: () => Promise<WalletSession | null>;
+  connectAlbedo: () => Promise<WalletSession | null>;
   connectPasskey: (label?: string) => Promise<WalletSession | null>;
   connectRoleKeypair: (role: DemoRole) => Promise<WalletSession | null>;
+  connectWallet: (
+    type: WalletType,
+    options?: { label?: string; role?: DemoRole },
+  ) => Promise<WalletSession | null>;
   signContractAction: (method: string, args?: xdr.ScVal[]) => Promise<string | null>;
+  clearError: () => void;
   disconnect: () => void;
 }
 
-const STORAGE_KEY = "veritag_wallet_session_v1";
+export const WALLET_STORAGE_KEY = "veritag_wallet_session_v1";
+export const CONNECTOR_STORAGE_KEY = "veritag_wallet_connector_v1";
 const KEYPAIR_STORAGE_PREFIX = "veritag_role_secret_v1_";
 
 const WalletContext = createContext<WalletContextValue | null>(null);
@@ -59,6 +100,16 @@ declare global {
         xdr: string,
         opts?: { networkPassphrase?: string; address?: string },
       ) => Promise<string | { signedTxXdr: string }>;
+    };
+    xBullSDK?: {
+      connect: (opts?: { canRequestPublicKey?: boolean; canRequestSign?: boolean }) => Promise<void>;
+      getPublicKey: () => Promise<string>;
+      sign: (opts: { xdr: string; network?: string; publicKey?: string }) => Promise<string>;
+    };
+    xbull?: {
+      connect?: () => Promise<void>;
+      getPublicKey?: () => Promise<string>;
+      sign?: (opts: { xdr: string; network?: string; publicKey?: string }) => Promise<string>;
     };
   }
 }
@@ -89,14 +140,22 @@ async function authenticateEd25519Keypair(kp: Keypair): Promise<string | null> {
 
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<WalletSession | null>(null);
+  const [activeConnector, setActiveConnector] = useState<WalletType | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(WALLET_STORAGE_KEY);
       if (raw) {
-        setSession(JSON.parse(raw) as WalletSession);
+        const parsed = JSON.parse(raw) as WalletSession;
+        setSession(parsed);
+        setActiveConnector(parsed.walletType);
+        return;
+      }
+      const savedConnector = localStorage.getItem(CONNECTOR_STORAGE_KEY) as WalletType | null;
+      if (savedConnector) {
+        setActiveConnector(savedConnector);
       }
     } catch {
       // Ignore storage errors
@@ -105,11 +164,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const persistSession = useCallback((next: WalletSession | null) => {
     setSession(next);
+    setActiveConnector(next ? next.walletType : null);
     try {
       if (next) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify(next));
+        localStorage.setItem(CONNECTOR_STORAGE_KEY, next.walletType);
       } else {
-        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(WALLET_STORAGE_KEY);
+        localStorage.removeItem(CONNECTOR_STORAGE_KEY);
       }
     } catch {
       // Ignore storage errors
@@ -172,6 +234,61 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       return next;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Freighter connection failed");
+      return null;
+    } finally {
+      setConnecting(false);
+    }
+  }, [persistSession]);
+
+  const connectXBull = useCallback(async (): Promise<WalletSession | null> => {
+    setConnecting(true);
+    setError(null);
+    try {
+      const sdk =
+        typeof window !== "undefined" ? (window.xBullSDK ?? window.xbull) : undefined;
+      if (!sdk?.getPublicKey) {
+        throw new Error(
+          "xBull extension not detected. Install xBull Wallet or choose Albedo / Passkey.",
+        );
+      }
+      if (sdk.connect) {
+        await sdk.connect({ canRequestPublicKey: true, canRequestSign: true });
+      }
+      const pubKey = await sdk.getPublicKey();
+      if (!pubKey) {
+        throw new Error("xBull did not return a public key");
+      }
+      const next: WalletSession = {
+        address: pubKey,
+        walletType: "xbull",
+        token: null,
+        label: "xBull Wallet",
+      };
+      persistSession(next);
+      return next;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "xBull connection failed");
+      return null;
+    } finally {
+      setConnecting(false);
+    }
+  }, [persistSession]);
+
+  const connectAlbedo = useCallback(async (): Promise<WalletSession | null> => {
+    setConnecting(true);
+    setError(null);
+    try {
+      const { pubkey } = await requestAlbedoPublicKey("veritag-session");
+      const next: WalletSession = {
+        address: pubkey,
+        walletType: "albedo",
+        token: null,
+        label: "Albedo Wallet",
+      };
+      persistSession(next);
+      return next;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Albedo popup connection failed");
       return null;
     } finally {
       setConnecting(false);
@@ -265,6 +382,25 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           return unsignedXdr;
         }
 
+        if (session.walletType === "xbull") {
+          const sdk =
+            typeof window !== "undefined" ? (window.xBullSDK ?? window.xbull) : undefined;
+          if (sdk?.sign) {
+            const network = PUBLIC_CONFIG.networkPassphrase.includes("Public")
+              ? "public"
+              : "testnet";
+            return await sdk.sign({ xdr: unsignedXdr, network, publicKey: session.address });
+          }
+          return unsignedXdr;
+        }
+
+        if (session.walletType === "albedo") {
+          const network = PUBLIC_CONFIG.networkPassphrase.includes("Public")
+            ? "public"
+            : "testnet";
+          return await signTxWithAlbedo(unsignedXdr, network);
+        }
+
         if (session.walletType === "keypair") {
           const rolesToCheck: DemoRole[] = session.role
             ? [session.role, "brand", "owner", "service"]
@@ -302,6 +438,28 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [session],
   );
 
+  const connectWallet = useCallback(
+    async (
+      type: WalletType,
+      options?: { label?: string; role?: DemoRole },
+    ): Promise<WalletSession | null> => {
+      return dispatchWalletConnection(
+        type,
+        {
+          freighter: connectFreighter,
+          xbull: connectXBull,
+          albedo: connectAlbedo,
+          passkey: connectPasskey,
+          keypair: (r = "owner") => connectRoleKeypair(r),
+        },
+        options,
+      );
+    },
+    [connectAlbedo, connectFreighter, connectPasskey, connectRoleKeypair, connectXBull],
+  );
+
+  const clearError = useCallback(() => setError(null), []);
+
   const disconnect = useCallback(() => {
     persistSession(null);
     setError(null);
@@ -311,12 +469,17 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     <WalletContext.Provider
       value={{
         session,
+        activeConnector,
         connecting,
         error,
         connectFreighter,
+        connectXBull,
+        connectAlbedo,
         connectPasskey,
         connectRoleKeypair,
+        connectWallet,
         signContractAction,
+        clearError,
         disconnect,
       }}
     >

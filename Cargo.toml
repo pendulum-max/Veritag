@@ -11,7 +11,7 @@ license = "MIT"
 repository = "https://github.com/pendulum-max/Veritag"
 
 [workspace.dependencies]
-soroban-sdk = "27"
+soroban-sdk = "29"
 
 [profile.release]
 opt-level = "z"

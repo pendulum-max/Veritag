@@ -7,3 +7,4 @@ export * from "./qr-svg.js";
 export * from "./webauthn.js";
 
 export * from "./errors.js";
+export * from "./ingestion.js";

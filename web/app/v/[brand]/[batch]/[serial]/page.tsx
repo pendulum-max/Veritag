@@ -25,40 +25,52 @@ export default async function PublicVerifyPage({ params }: VerifyPageProps) {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 space-y-6 sm:px-6">
+      <div role="status" aria-live="polite" className="sr-only">
+        Verification status for serial {serial}: {summary.status}.
+      </div>
+
       <StatusBanner status={summary.status} />
 
       {summary.suspiciousScanVolume && (
-        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+        <div
+          role="alert"
+          aria-live="polite"
+          className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100"
+        >
           <strong>High Scan Frequency Alert:</strong> This tag has been scanned{" "}
           <strong>{summary.scanCount}</strong> times. High scan counts on supposedly factory-sealed
           goods often indicate cloned outer packaging.
         </div>
       )}
 
-      <section className="grid gap-4 sm:grid-cols-2">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+      <section aria-label="Product and Manufacturer Details" className="grid gap-4 sm:grid-cols-2">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
             Manufacturer
           </div>
           <div className="mt-2 flex items-center gap-2">
-            <span className="text-base font-bold text-slate-900">
+            <span className="text-base font-bold text-slate-900 dark:text-slate-100">
               {summary.brand.domain ?? "Unverified Issuer"}
             </span>
             {summary.brand.verified && (
-              <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">
+              <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">
                 stellar.toml Verified
               </span>
             )}
           </div>
-          <p className="mt-2 break-all font-mono text-xs text-slate-500">{summary.brand.address}</p>
+          <p className="mt-2 break-all font-mono text-xs text-slate-600 dark:text-slate-400">
+            {summary.brand.address}
+          </p>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
             Scan Telemetry &amp; Serial
           </div>
-          <div className="mt-2 text-base font-bold font-mono text-slate-900">{serial}</div>
-          <div className="mt-2 flex items-center justify-between text-xs text-slate-600">
+          <div className="mt-2 text-base font-bold font-mono text-slate-900 dark:text-slate-100">
+            {serial}
+          </div>
+          <div className="mt-2 flex items-center justify-between text-xs text-slate-600 dark:text-slate-300">
             <span>Public Scans: {summary.scanCount}</span>
             <span>
               Warranty Term: {summary.batch ? `${summary.batch.warrantyMonths} months` : "N/A"}
@@ -68,16 +80,22 @@ export default async function PublicVerifyPage({ params }: VerifyPageProps) {
       </section>
 
       {summary.unit && (
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+        <section
+          aria-labelledby="provenance-heading"
+          className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4 dark:border-slate-800 dark:bg-slate-900"
+        >
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-900">
+            <h2
+              id="provenance-heading"
+              className="text-lg font-semibold text-slate-900 dark:text-slate-100"
+            >
               Warranty &amp; Anonymized Provenance
             </h2>
             <span
               className={`rounded-full px-3 py-1 text-xs font-semibold ${
                 summary.unit.warrantyValid
-                  ? "bg-emerald-100 text-emerald-800"
-                  : "bg-slate-200 text-slate-700"
+                  ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"
+                  : "bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-200"
               }`}
             >
               {summary.unit.warrantyValid ? "Warranty Active" : "Warranty Inactive / Expired"}
@@ -85,40 +103,46 @@ export default async function PublicVerifyPage({ params }: VerifyPageProps) {
           </div>
 
           <dl className="grid gap-4 text-sm sm:grid-cols-3">
-            <div className="rounded-xl bg-slate-50 p-3.5">
-              <dt className="text-xs text-slate-500">Current Owner (Pseudonymous)</dt>
-              <dd className="mt-1 font-mono font-semibold text-slate-900">
+            <div className="rounded-xl bg-slate-50 p-3.5 dark:bg-slate-800/70">
+              <dt className="text-xs text-slate-600 dark:text-slate-400">
+                Current Owner (Pseudonymous)
+              </dt>
+              <dd className="mt-1 font-mono font-semibold text-slate-900 dark:text-slate-100">
                 {summary.unit.ownerAnonymized}
               </dd>
             </div>
-            <div className="rounded-xl bg-slate-50 p-3.5">
-              <dt className="text-xs text-slate-500">Activated / Expires</dt>
-              <dd className="mt-1 font-semibold text-slate-900">
+            <div className="rounded-xl bg-slate-50 p-3.5 dark:bg-slate-800/70">
+              <dt className="text-xs text-slate-600 dark:text-slate-400">Activated / Expires</dt>
+              <dd className="mt-1 font-semibold text-slate-900 dark:text-slate-100">
                 {formatUnixDate(summary.unit.activatedAt)} →{" "}
                 {formatUnixDate(summary.unit.warrantyExpiry)}
               </dd>
             </div>
-            <div className="rounded-xl bg-slate-50 p-3.5">
-              <dt className="text-xs text-slate-500">Resales / Service Claims</dt>
-              <dd className="mt-1 font-semibold text-slate-900">
+            <div className="rounded-xl bg-slate-50 p-3.5 dark:bg-slate-800/70">
+              <dt className="text-xs text-slate-600 dark:text-slate-400">
+                Resales / Service Claims
+              </dt>
+              <dd className="mt-1 font-semibold text-slate-900 dark:text-slate-100">
                 {summary.unit.ownershipTransfers} transfers · {summary.unit.claimsUsed} claims
               </dd>
             </div>
           </dl>
 
           {details.timeline.length > 0 && (
-            <div className="border-t border-slate-100 pt-4 space-y-2">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            <div className="border-t border-slate-100 pt-4 space-y-2 dark:border-slate-800">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
                 On-Chain Provenance Timeline
               </h3>
               <ul className="space-y-1.5 text-xs">
                 {details.timeline.map((ev) => (
                   <li
                     key={ev.id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2"
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800/70"
                   >
-                    <span className="font-mono font-semibold text-slate-800">{ev.type}</span>
-                    <span className="font-mono text-slate-500">
+                    <span className="font-mono font-semibold text-slate-800 dark:text-slate-100">
+                      {ev.type}
+                    </span>
+                    <span className="font-mono text-slate-600 dark:text-slate-300">
                       Tx: {ev.txHash.slice(0, 12)}... ·{" "}
                       {ev.finalized ? "Finalized" : "Pending Finality"}
                     </span>
@@ -129,21 +153,21 @@ export default async function PublicVerifyPage({ params }: VerifyPageProps) {
           )}
 
           {details.claims.length > 0 && (
-            <div className="border-t border-slate-100 pt-4 space-y-2">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            <div className="border-t border-slate-100 pt-4 space-y-2 dark:border-slate-800">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
                 Authorized Service Claims &amp; Anchored Reports
               </h3>
               <div className="space-y-2">
                 {details.claims.map((cl) => (
                   <div
                     key={cl.claimId}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs"
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs dark:border-slate-700"
                   >
                     <div>
-                      <span className="font-semibold text-slate-900">
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
                         Claim #{cl.claimId}: {cl.outcome}
                       </span>
-                      <span className="ml-2 font-mono text-slate-500">
+                      <span className="ml-2 font-mono text-slate-600 dark:text-slate-400">
                         SC: {cl.serviceCenter.slice(0, 8)}...
                       </span>
                     </div>
@@ -152,7 +176,8 @@ export default async function PublicVerifyPage({ params }: VerifyPageProps) {
                         href={getFileDownloadUrl(cl.reportHash)}
                         target="_blank"
                         rel="noreferrer"
-                        className="font-semibold text-blue-600 hover:underline"
+                        aria-label={`Download service claim ${cl.claimId} report`}
+                        className="font-semibold text-blue-700 hover:underline dark:text-blue-400"
                       >
                         Download Report ({cl.reportHash.slice(0, 10)}...)
                       </a>

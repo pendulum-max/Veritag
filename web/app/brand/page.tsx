@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { type BatchCommitPayload, BatchUploadWizard } from "@/components/BatchUploadWizard";
+import { type MerkleLeafInput, MerkleTreeVisualizer } from "@/components/MerkleTreeVisualizer";
 import { QrCodeCard } from "@/components/QrCodeCard";
 import { PUBLIC_CONFIG } from "@/lib/stellar";
 import { useWallet } from "@/lib/wallet-context";
@@ -48,6 +50,9 @@ export default function BrandDashboardPage() {
   const [warrantyMonths, setWarrantyMonths] = useState(24);
   const [productSku, setProductSku] = useState("Chronos Diver 300M");
   const [notice, setNotice] = useState<string | null>(null);
+  const [visualizedLeaves, setVisualizedLeaves] = useState<MerkleLeafInput[] | undefined>(
+    undefined,
+  );
 
   const loadBrandState = useCallback(async (token: string) => {
     try {
@@ -266,6 +271,54 @@ export default function BrandDashboardPage() {
     setBatches((prev) => [created, ...prev]);
     setNotice(
       `Built Merkle tree for ${unitCount} units and prepared commit_batch(${created.merkleRoot.slice(0, 14)}...).`,
+    );
+  }
+
+  async function handleCsvWizardCommit(payload: BatchCommitPayload) {
+    const enc = new TextEncoder();
+    const batchDigest = await crypto.subtle.digest("SHA-256", enc.encode(payload.batchCode));
+    const batchId = Array.from(new Uint8Array(batchDigest))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
+    if (session?.token) {
+      try {
+        const signedTxXdr = await signContractAction("commit_batch");
+        await fetch(`${PUBLIC_CONFIG.apiUrl}/v1/brands/batches`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.token}`,
+          },
+          body: JSON.stringify({
+            batchCode: payload.batchCode,
+            warrantyMonths: payload.warrantyMonths,
+            productMeta: { model: productSku, domain },
+            count: payload.units.length,
+            merkleRoot: payload.merkleRoot,
+            ...(signedTxXdr ? { signedTxXdr } : {}),
+          }),
+        });
+      } catch {
+        // Offline fallback
+      }
+    }
+
+    setBatches((prev) => [
+      {
+        batchCode: payload.batchCode,
+        batchId,
+        merkleRoot: payload.merkleRoot,
+        unitCount: payload.units.length,
+        activatedCount: 0,
+        warrantyMonths: payload.warrantyMonths,
+        recalled: false,
+      },
+      ...prev,
+    ]);
+    setVisualizedLeaves(payload.units.slice(0, 64).map((u) => ({ label: u.serial })));
+    setNotice(
+      `Committed CSV batch ${payload.batchCode} (${payload.units.length} units, root ${payload.merkleRoot.slice(0, 14)}...).`,
     );
   }
 
@@ -591,6 +644,10 @@ export default function BrandDashboardPage() {
               </div>
             </div>
           ))}
+
+          <BatchUploadWizard onCommit={handleCsvWizardCommit} />
+
+          <MerkleTreeVisualizer leaves={visualizedLeaves} />
         </div>
       </div>
     </div>

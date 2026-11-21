@@ -8,6 +8,7 @@ export function QrScanner() {
   const router = useRouter();
   const [pasteInput, setPasteInput] = useState("");
   const [scanError, setScanError] = useState<string | null>(null);
+  const [scanAnnouncement, setScanAnnouncement] = useState<string>("");
   const [cameraActive, setCameraActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -48,6 +49,7 @@ export function QrScanner() {
       });
       streamRef.current = stream;
       setCameraActive(true);
+      setScanAnnouncement("Camera QR scanner started.");
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
@@ -94,6 +96,7 @@ export function QrScanner() {
       streamRef.current = null;
     }
     setCameraActive(false);
+    setScanAnnouncement("Camera QR scanner stopped.");
   }
 
   async function handleSvgUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -114,16 +117,17 @@ export function QrScanner() {
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3 dark:border-slate-800 dark:bg-slate-900">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">
+        <span className="text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">
           QR Tag Scanner (Camera, File, or URL)
         </span>
         {!cameraActive ? (
           <button
             type="button"
             onClick={handleStartCamera}
-            className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
+            aria-label="Open camera QR scanner"
+            className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500"
           >
             Open Camera Scanner
           </button>
@@ -131,6 +135,7 @@ export function QrScanner() {
           <button
             type="button"
             onClick={handleStopCamera}
+            aria-label="Stop camera QR scanner"
             className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
           >
             Stop Camera
@@ -141,6 +146,7 @@ export function QrScanner() {
       {cameraActive && (
         <video
           ref={videoRef}
+          aria-label="Live QR code camera preview"
           className="h-44 w-full rounded-lg bg-black object-cover"
           muted
           playsInline
@@ -150,29 +156,45 @@ export function QrScanner() {
       <div className="flex gap-2">
         <input
           type="text"
+          aria-label="QR payload URL"
           placeholder="Paste QR URL (/v/G.../batch/serial#s=...)"
           value={pasteInput}
           onChange={(e) => setPasteInput(e.target.value)}
-          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-mono text-xs"
+          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-mono text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
         />
         <button
           type="button"
           onClick={() => routeFromQrPayload(pasteInput)}
-          className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-100"
+          aria-label="Parse pasted QR URL"
+          className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
         >
           Parse QR
         </button>
       </div>
 
-      <div className="flex items-center justify-between text-[11px] text-slate-500">
+      <div className="flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-400">
         <span>Or inspect an exported Veritag SVG label:</span>
-        <label className="cursor-pointer font-semibold text-blue-600 hover:underline">
+        <label className="cursor-pointer font-semibold text-blue-700 hover:underline dark:text-blue-400">
           Upload QR SVG
-          <input type="file" accept=".svg,image/svg+xml" onChange={handleSvgUpload} className="hidden" />
+          <input
+            type="file"
+            accept=".svg,image/svg+xml"
+            aria-label="Upload QR SVG label file"
+            onChange={handleSvgUpload}
+            className="sr-only"
+          />
         </label>
       </div>
 
-      {scanError && <p className="text-xs font-medium text-red-600">{scanError}</p>}
+      <div role="status" aria-live="polite" className="sr-only">
+        {scanAnnouncement}
+      </div>
+
+      {scanError && (
+        <p role="alert" aria-live="polite" className="text-xs font-medium text-red-700 dark:text-red-400">
+          {scanError}
+        </p>
+      )}
     </div>
   );
 }

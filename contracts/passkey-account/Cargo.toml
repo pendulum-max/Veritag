@@ -15,4 +15,4 @@ soroban-sdk = { workspace = true }
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 p256 = { version = "0.13.2", features = ["ecdsa"] }
-sha2 = "0.10.9"
+sha2 = "0.11.1"

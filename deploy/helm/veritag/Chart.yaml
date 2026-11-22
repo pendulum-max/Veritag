@@ -1,0 +1,15 @@
+apiVersion: v2
+name: veritag
+description: Veritag — on-chain product authenticity and warranty registry on Stellar Soroban
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - stellar
+  - soroban
+  - web3
+  - authenticity
+home: https://github.com/pendulum-max/Veritag
+maintainers:
+  - name: Veritag Contributors
+    url: https://github.com/pendulum-max/Veritag

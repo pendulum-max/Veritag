@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "veritag.fullname" . }}-indexer
+  labels:
+    {{- include "veritag.labels" . | nindent 4 }}
+    app.kubernetes.io/component: indexer
+spec:
+  {{- if not .Values.indexer.autoscaling.enabled }}
+  replicas: {{ .Values.indexer.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "veritag.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: indexer
+  template:
+    metadata:
+      labels:
+        {{- include "veritag.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: indexer
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: indexer
+          image: "{{ if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{ end }}{{ .Values.indexer.image.repository }}:{{ .Values.indexer.image.tag }}"
+          imagePullPolicy: {{ .Values.indexer.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          env:
+            {{- range $key, $value := .Values.indexer.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          {{- if .Values.indexer.envFromSecret }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.indexer.envFromSecret }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.indexer.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "veritag.fullname" . }}-indexer
+  labels:
+    {{- include "veritag.labels" . | nindent 4 }}
+    app.kubernetes.io/component: indexer
+spec:
+  type: {{ .Values.indexer.service.type }}
+  selector:
+    {{- include "veritag.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: indexer
+  ports:
+    - name: http
+      port: {{ .Values.indexer.service.port }}
+      targetPort: http
+      protocol: TCP
+{{- if .Values.indexer.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "veritag.fullname" . }}-indexer
+  labels:
+    {{- include "veritag.labels" . | nindent 4 }}
+    app.kubernetes.io/component: indexer
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "veritag.fullname" . }}-indexer
+  minReplicas: {{ .Values.indexer.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.indexer.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.indexer.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}

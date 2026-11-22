@@ -19,6 +19,8 @@
     "contract:bindings": "./scripts/generate-bindings.sh",
     "db:migrate": "pnpm --filter @veritag/backend db:migrate",
     "seed:demo": "tsx scripts/seed-demo.ts",
+    "state:snapshot": "tsx scripts/snapshot-state.ts",
+    "state:restore": "tsx scripts/restore-state.ts",
     "test:load": "k6 run scripts/load-test.js"
   },
   "devDependencies": {

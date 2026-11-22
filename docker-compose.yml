@@ -32,6 +32,19 @@ services:
     volumes:
       - minio_data:/data
 
+  minio-init:
+    image: minio/mc
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: ["sh", "/init-minio.sh"]
+    volumes:
+      - ./scripts/init-minio.sh:/init-minio.sh:ro
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-veritag}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-veritag-secret}
+    restart: no
+
   backend:
     build:
       context: .
@@ -43,6 +56,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+      minio-init:
+        condition: service_completed_successfully
     env_file:
       - .env
     environment:

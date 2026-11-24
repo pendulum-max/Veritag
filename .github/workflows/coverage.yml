@@ -21,6 +21,7 @@ jobs:
       - name: Install Rust toolchain with llvm-tools
         uses: dtolnay/rust-toolchain@stable
         with:
+          targets: wasm32v1-none
           components: llvm-tools-preview
 
       - name: Cache Cargo registry and target
@@ -28,6 +29,9 @@ jobs:
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Build WASM release artifacts
+        run: cargo build --workspace --target wasm32v1-none --release
 
       - name: Generate Rust lcov coverage report
         run: cargo llvm-cov --workspace --lcov --output-path lcov-rust.info
@@ -56,6 +60,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Build workspace packages
+        run: pnpm build
 
       - name: Generate TypeScript lcov coverage reports
         run: pnpm test -- --coverage --coverage.reporter=lcov --coverage.reporter=text

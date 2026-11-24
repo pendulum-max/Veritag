@@ -4,11 +4,11 @@ import { StatusBanner } from "@/components/StatusBanner";
 import { verifyProduct } from "@/lib/stellar";
 
 interface VerifyPageProps {
-  params: Promise<{ brand: string; serial: string }>;
+  params: Promise<{ brand: string; batch: string }>;
 }
 
 export async function generateMetadata({ params }: VerifyPageProps): Promise<Metadata> {
-  const { brand: rawBrand, serial: rawSerial } = await params;
+  const { brand: rawBrand, batch: rawSerial } = await params;
   const brand = decodeURIComponent(rawBrand);
   const serial = decodeURIComponent(rawSerial);
   const summary = await verifyProduct(brand, "default", serial);
@@ -36,7 +36,7 @@ export async function generateMetadata({ params }: VerifyPageProps): Promise<Met
 }
 
 export default async function VerifyProductPage({ params }: VerifyPageProps) {
-  const { brand: rawBrand, serial: rawSerial } = await params;
+  const { brand: rawBrand, batch: rawSerial } = await params;
   const brand = decodeURIComponent(rawBrand);
   const serial = decodeURIComponent(rawSerial);
   const summary = await verifyProduct(brand, "default", serial);

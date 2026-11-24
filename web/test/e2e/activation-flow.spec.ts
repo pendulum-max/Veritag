@@ -11,6 +11,13 @@ test.describe("QR scan-to-activation end-to-end flow", () => {
   }) => {
     let capturedActivationBody = null as Record<string, unknown> | null;
 
+    await page.addInitScript(() => {
+      if (navigator.credentials) {
+        navigator.credentials.create = () =>
+          Promise.reject(new DOMException("Platform authenticator unavailable in headless test", "NotAllowedError"));
+      }
+    });
+
     await page.route("**/v1/passkey/register", async (route) => {
       await route.fulfill({
         status: 200,
@@ -39,7 +46,7 @@ test.describe("QR scan-to-activation end-to-end flow", () => {
     );
 
     // 1. Verify authenticity banner & product metadata
-    await expect(page.getByText(DEMO_SERIAL)).toBeVisible();
+    await expect(page.getByText(DEMO_SERIAL, { exact: true })).toBeVisible();
     await expect(page.getByText("chronos-watches.swiss")).toBeVisible();
     await expect(page.getByText("Claim & Activate Warranty")).toBeVisible();
 

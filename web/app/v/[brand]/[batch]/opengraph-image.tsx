@@ -56,9 +56,9 @@ function getOgTheme(status: string, authentic: boolean): OgTheme {
 export default async function Image({
   params,
 }: {
-  params: Promise<{ brand: string; serial: string }>;
+  params: Promise<{ brand: string; batch: string }>;
 }) {
-  const { brand: rawBrand, serial: rawSerial } = await params;
+  const { brand: rawBrand, batch: rawSerial } = await params;
   const brand = decodeURIComponent(rawBrand);
   const serial = decodeURIComponent(rawSerial);
 

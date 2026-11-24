@@ -47,6 +47,7 @@ export function ActivationDrawer({
       const parsedSecret = decodeURIComponent(window.location.hash.slice(3));
       if (parsedSecret) {
         setSecret(parsedSecret);
+        setIsOpen(true);
       }
     }
   }, []);

@@ -87,6 +87,9 @@ jobs:
       - name: Install Playwright Chromium browser
         run: pnpm --filter @veritag/web exec playwright install --with-deps chromium
 
+      - name: Build @veritag/sdk
+        run: pnpm --filter @veritag/sdk build
+
       - name: Run Playwright E2E suite
         run: pnpm --filter @veritag/web test:e2e
 

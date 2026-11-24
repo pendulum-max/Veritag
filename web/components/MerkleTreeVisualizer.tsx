@@ -221,8 +221,9 @@ export function MerkleTreeVisualizer({
         onPointerUp={() => setDragging(false)}
         onPointerLeave={() => setDragging(false)}
       >
+        <span role="img" aria-label="Merkle tree diagram" className="sr-only" />
         <svg
-          role="img"
+          role="group"
           aria-label="Merkle tree diagram"
           viewBox={`0 0 ${layout.width} ${layout.height}`}
           className="h-80 w-full select-none touch-none cursor-grab active:cursor-grabbing"

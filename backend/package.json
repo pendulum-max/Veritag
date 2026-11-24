@@ -15,14 +15,16 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.13.8",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/sdk-node": "^0.57.0",
+    "@opentelemetry/sdk-trace-node": "^1.30.0",
     "@stellar/stellar-sdk": "^17.4.0",
     "@veritag/sdk": "workspace:*",
     "hono": "^4.7.2",
     "pg": "^8.13.3",
-    "zod": "^3.24.2",
-    "@opentelemetry/api": "^1.9.0",
-    "@opentelemetry/sdk-node": "^0.57.0",
-    "@opentelemetry/sdk-trace-node": "^1.30.0"
+    "pino": "^10.4.0",
+    "pino-http": "^11.0.0",
+    "zod": "^3.24.2"
   },
   "devDependencies": {
     "@types/pg": "^8.11.11"

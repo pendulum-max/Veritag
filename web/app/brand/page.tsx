@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { type BatchCommitPayload } from "@/components/BatchUploadWizard";
 import { MetricCardSkeleton } from "@/components/MetricCardSkeleton";
 import { QrCodeCard } from "@/components/QrCodeCard";
+import { QrPrintPreviewModal, type PrintableTagRow } from "@/components/QrPrintPreviewModal";
 import { TableSkeleton } from "@/components/TableSkeleton";
 import { PUBLIC_CONFIG } from "@/lib/stellar";
 import { useWallet } from "@/lib/wallet-context";
@@ -310,7 +312,6 @@ export default function BrandDashboardPage() {
       },
       ...prev,
     ]);
-    setVisualizedLeaves(payload.units.slice(0, 64).map((u) => ({ label: u.serial })));
     setNotice(
       `Committed CSV batch ${payload.batchCode} (${payload.units.length} units, root ${payload.merkleRoot.slice(0, 14)}...).`,
     );

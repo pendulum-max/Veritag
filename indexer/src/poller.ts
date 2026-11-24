@@ -158,10 +158,12 @@ export class IndexerPoller {
       const cursorState = await this.writer.getCursor();
       this.currentLedger = cursorState.lastLedger;
 
+      const contractIds = this.getWatchedContractIds();
       let page: EventPageResponse;
       try {
         page = await this.provider.fetchEvents({
-          contractId: this.contractId,
+          contractId: contractIds[0],
+          contractIds,
           cursor: cursorState.lastCursor || undefined,
           startLedger: cursorState.lastCursor ? undefined : Math.max(1, cursorState.lastLedger),
           limit: this.batchLimit,
@@ -169,7 +171,8 @@ export class IndexerPoller {
       } catch {
         // Handle RPC retention window cursor expiration by falling back to startLedger
         page = await this.provider.fetchEvents({
-          contractId: this.contractId,
+          contractId: contractIds[0],
+          contractIds,
           startLedger: Math.max(1, cursorState.lastLedger),
           limit: this.batchLimit,
         });
@@ -182,8 +185,12 @@ export class IndexerPoller {
 
       for (const rawEv of page.events) {
         highestLedger = Math.max(highestLedger, rawEv.ledger);
-        const decoded = decodeRegistryEvent(rawEv);
+        const decoded = decodeContractEvent(rawEv, this.contractKinds);
         if (!decoded) continue;
+
+        if (decoded.type === "account_deployed") {
+          this.addWatchedContractId(decoded.account, "passkey_account");
+        }
 
         const isFinalized = decoded.ledger <= confirmedCutoff;
         const { applied } = await this.writer.applyEvent(decoded, isFinalized);

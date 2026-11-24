@@ -33,7 +33,7 @@ interface QrPrintPreviewModalProps {
 }
 
 export function QrPrintPreviewModal({ items, onClose }: QrPrintPreviewModalProps) {
-  const [preset, setPreset] = useState<SheetPreset>(SHEET_PRESETS[0]);
+  const [preset, setPreset] = useState<SheetPreset>(SHEET_PRESETS[0]!);
   const [labelPadding, setLabelPadding] = useState(8);
   const [fontSize, setFontSize] = useState(10);
   const backdropRef = useRef<HTMLDivElement>(null);
@@ -116,7 +116,7 @@ export function QrPrintPreviewModal({ items, onClose }: QrPrintPreviewModalProps
                 aria-label="Sheet layout preset"
                 value={preset.id}
                 onChange={(e) =>
-                  setPreset(SHEET_PRESETS.find((p) => p.id === e.target.value) ?? SHEET_PRESETS[0])
+                  setPreset(SHEET_PRESETS.find((p) => p.id === e.target.value) ?? SHEET_PRESETS[0]!)
                 }
                 className="mt-1 rounded-xl border border-slate-300 px-3 py-2 text-sm"
               >

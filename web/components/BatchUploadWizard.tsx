@@ -168,7 +168,15 @@ export function BatchUploadWizard({ onCommit }: BatchUploadWizardProps) {
     setParseError(null);
     setCommitStatus(null);
     try {
-      const content = await file.text();
+      const content =
+        typeof file.text === "function"
+          ? await file.text()
+          : await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(String(reader.result ?? ""));
+              reader.onerror = () => reject(reader.error ?? new Error("Failed to read file"));
+              reader.readAsText(file);
+            });
       if (!content.trim()) {
         setParseError("Uploaded file is empty.");
         return;

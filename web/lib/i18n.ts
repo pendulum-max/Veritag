@@ -2,6 +2,7 @@
 
 import {
   createContext,
+  createElement,
   useCallback,
   useContext,
   useEffect,
@@ -209,17 +210,17 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     [locale],
   );
 
-  return (
-    <I18nContext.Provider
-      value={{
+  return createElement(
+    I18nContext.Provider,
+    {
+      value: {
         locale,
         messages: LOCALE_MESSAGES[locale],
         setLocale,
         t,
-      }}
-    >
-      {children}
-    </I18nContext.Provider>
+      },
+    },
+    children,
   );
 }
 

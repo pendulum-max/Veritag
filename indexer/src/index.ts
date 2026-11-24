@@ -1,4 +1,6 @@
+import { createServer, type Server } from "node:http";
 import { AlertService } from "./alerts.js";
+import type { ContractKind } from "./decoder.js";
 import { IndexerPoller, RpcEventsProvider } from "./poller.js";
 import { InMemoryIndexerWriter, PostgresIndexerWriter } from "./writer.js";
 
@@ -114,7 +116,7 @@ async function main(): Promise<void> {
     console.log(`[indexer] Healthcheck listening on :${healthPort}/healthz (MAX_ALLOWED_LAG=${maxAllowedLag})`);
   });
 
-  console.log(`Veritag indexer started for contract ${contractId} via ${rpcUrl}`);
+  console.log(`Veritag indexer started for contracts ${contractIds.join(", ")} via ${rpcUrl}`);
   while (true) {
     try {
       const stats = await poller.pollOnce();

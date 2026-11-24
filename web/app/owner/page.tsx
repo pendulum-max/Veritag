@@ -1,6 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { MetricCardSkeleton } from "@/components/MetricCardSkeleton";
+import { PasskeyOnboardingModal } from "@/components/PasskeyOnboardingModal";
+import { TableSkeleton } from "@/components/TableSkeleton";
+import { TransferCountdownCard } from "@/components/TransferCountdownCard";
 import { WarrantyCertificate } from "@/components/WarrantyCertificate";
 import { PUBLIC_CONFIG } from "@/lib/stellar";
 import { useWallet } from "@/lib/wallet-context";
@@ -37,6 +41,8 @@ export default function OwnerPortalPage() {
   const [serviceCenterAddr, setServiceCenterAddr] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [selectedCertUnit, setSelectedCertUnit] = useState<OwnedProductItem | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [passkeyOnboardingOpen, setPasskeyOnboardingOpen] = useState(false);
 
   const loadOwnerUnits = useCallback(async (address: string, token: string) => {
     setIsLoading(true);
@@ -392,6 +398,11 @@ export default function OwnerPortalPage() {
           onClose={() => setSelectedCertUnit(null)}
         />
       )}
+
+      <PasskeyOnboardingModal
+        open={passkeyOnboardingOpen}
+        onClose={() => setPasskeyOnboardingOpen(false)}
+      />
     </div>
   );
 }

@@ -11,6 +11,7 @@ interface ActivationDrawerProps {
   batchId: string;
   serial: string;
   defaultOpen?: boolean;
+  disabled?: boolean;
 }
 
 export function ActivationDrawer({
@@ -18,6 +19,7 @@ export function ActivationDrawer({
   batchId,
   serial,
   defaultOpen = false,
+  disabled = false,
 }: ActivationDrawerProps) {
   const router = useRouter();
   const { session, connectPasskey, connectRoleKeypair, signContractAction } = useWallet();

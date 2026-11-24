@@ -4,7 +4,7 @@ use soroban_sdk::{
 
 use crate::types::{
     Batch, BatchStatus, Brand, BrandActionProposal, BrandAdminConfig, Claim, Config, RecallInfo,
-    TransferOffer, Unit, UnitRetirement, SECONDS_PER_MONTH,
+    ServiceCenter, TransferOffer, Unit, UnitRetirement, SECONDS_PER_MONTH,
 };
 
 /// Storage layout used before optional expiration was introduced.
@@ -264,6 +264,14 @@ pub fn get_batch(env: &Env, brand: &Address, batch_id: &BytesN<32>) -> Option<Ba
     let frozen_key = Symbol::new(env, "frozen");
     if !fields.contains_key(frozen_key.clone()) {
         fields.set(frozen_key, false.into_val(env));
+    }
+    let max_transfers_key = Symbol::new(env, "max_transfers");
+    if !fields.contains_key(max_transfers_key.clone()) {
+        fields.set(max_transfers_key, None::<u32>.into_val(env));
+    }
+    let max_claims_key = Symbol::new(env, "max_claims");
+    if !fields.contains_key(max_claims_key.clone()) {
+        fields.set(max_claims_key, None::<u32>.into_val(env));
     }
     let normalized: Val = fields.into_val(env);
     let mut batch = Batch::try_from_val(env, &normalized).expect("invalid batch storage");

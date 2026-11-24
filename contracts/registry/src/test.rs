@@ -13,7 +13,7 @@ use crate::{
     merkle::{compute_leaf, hash_pair, sha256_bytes, MAX_PROOF_DEPTH},
     storage::DataKey,
     types::{
-        ClaimOutcome, RecallInfo, RegistryError, UnitStatus, VerifyStatus,
+        ClaimOutcome, RegistryError, UnitStatus, VerifyStatus,
         DEFAULT_MAX_CLAIMS_PER_UNIT, SECONDS_PER_MONTH,
     },
     VeritagRegistry, VeritagRegistryClient,
@@ -1363,7 +1363,7 @@ fn test_freeze_missing_batch_and_permanent_recall() {
     );
     f.client.freeze_batch(&f.brand, &batch_id);
     f.client
-        .recall_batch(&f.brand, &batch_id, &f.hash_str("RECALL"));
+        .recall_batch(&f.brand, &batch_id, &3, &f.hash_str("RECALL"));
     assert_eq!(
         f.client.try_unfreeze_batch(&f.brand, &batch_id),
         Err(Ok(RegistryError::BatchRecalled))

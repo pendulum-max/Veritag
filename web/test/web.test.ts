@@ -23,8 +23,24 @@ import {
   PUBLIC_CONFIG,
   resolveGs1DigitalLink,
   signRegistryTxWithSecret,
+  type UnitTimelineEvent,
   verifyProduct,
 } from "../lib/stellar.js";
+import { BatchUploadWizard, validateBatchCsv } from "../components/BatchUploadWizard.js";
+import { MerkleTreeVisualizer } from "../components/MerkleTreeVisualizer.js";
+import { sortTimelineEvents } from "../components/ProvenanceTimeline.js";
+import {
+  detectTorchCapability,
+  filterVideoInputDevices,
+  formatCameraError,
+} from "../components/QrScanner.js";
+import { AppThemeProvider, ThemeToggle } from "../components/ThemeToggle.js";
+import {
+  isScanMuted,
+  playScanSuccessFeedback,
+  setScanMuted,
+  toggleScanMuted,
+} from "../lib/feedback.js";
 import { dispatchWalletConnection, type WalletSession } from "../lib/wallet-context.js";
 
 describe("@veritag/web verification & passkey wallet logic", () => {

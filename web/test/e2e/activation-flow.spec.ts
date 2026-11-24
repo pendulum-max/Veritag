@@ -9,7 +9,7 @@ test.describe("QR scan-to-activation end-to-end flow", () => {
   test("scans QR with pre-filled secret, connects simulated passkey wallet, and activates unit", async ({
     page,
   }) => {
-    let capturedActivationBody: Record<string, unknown> | null = null;
+    let capturedActivationBody = null as Record<string, unknown> | null;
 
     await page.route("**/v1/passkey/register", async (route) => {
       await route.fulfill({

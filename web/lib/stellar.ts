@@ -423,3 +423,68 @@ export async function resolveGs1DigitalLink(
     source: "demo-fallback",
   };
 }
+
+export interface InstalledWalletsStatus {
+  freighter: boolean;
+  xbull: boolean;
+  albedo: boolean;
+  passkey: boolean;
+}
+
+/**
+ * Detects which Stellar browser wallet providers and WebAuthn passkeys are available.
+ */
+export function detectInstalledWallets(): InstalledWalletsStatus {
+  if (typeof window === "undefined") {
+    return { freighter: false, xbull: false, albedo: true, passkey: false };
+  }
+  const win = window as unknown as {
+    freighterApi?: unknown;
+    xBullSDK?: unknown;
+    xbull?: unknown;
+  };
+  return {
+    freighter: Boolean(win.freighterApi),
+    xbull: Boolean(win.xBullSDK ?? win.xbull),
+    albedo: true,
+    passkey: typeof window.PublicKeyCredential !== "undefined",
+  };
+}
+
+/**
+ * Requests a public key from the Albedo popup wallet intent API.
+ */
+export async function requestAlbedoPublicKey(token: string): Promise<{ pubkey: string }> {
+  const albedo =
+    typeof window !== "undefined"
+      ? (window as unknown as {
+          albedo?: { publicKey?: (params: { token: string }) => Promise<{ pubkey: string }> };
+        }).albedo
+      : undefined;
+  if (!albedo?.publicKey) {
+    throw new Error("Albedo wallet provider is unavailable in this browser.");
+  }
+  return albedo.publicKey({ token });
+}
+
+/**
+ * Signs a Soroban transaction XDR using the Albedo popup wallet intent API.
+ */
+export async function signTxWithAlbedo(
+  xdr: string,
+  network: "public" | "testnet",
+): Promise<string> {
+  const albedo =
+    typeof window !== "undefined"
+      ? (window as unknown as {
+          albedo?: {
+            tx?: (params: { xdr: string; network: string }) => Promise<{ signed_envelope_xdr: string }>;
+          };
+        }).albedo
+      : undefined;
+  if (!albedo?.tx) {
+    throw new Error("Albedo wallet provider is unavailable in this browser.");
+  }
+  const res = await albedo.tx({ xdr, network });
+  return res.signed_envelope_xdr;
+}

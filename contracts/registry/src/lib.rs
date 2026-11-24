@@ -8,16 +8,17 @@ pub mod types;
 use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, String, Vec};
 
 use crate::events::{
-    BatchCommitted, BatchFrozen, BatchRecalled, BatchUnfrozen, BrandActionExecuted,
-    BrandActionProposed, BrandRegistered, BrandVerified, ClaimFiled, ClaimResolved,
-    DuplicateAttempt, ServiceCenterRegistered, TransferCancelled, TransferOffered, UnitActivated,
-    UnitFlagged, UnitRetired, UnitTransferred, WarrantyExtended,
+    BatchCommitted, BatchFrozen, BatchRecalled, BatchTransferLimitUpdated, BatchUnfrozen,
+    BrandActionExecuted, BrandActionProposed, BrandRegistered, BrandVerified, ClaimFiled,
+    ClaimResolved, DuplicateAttempt, ServiceCenterRegistered, ServiceCenterRevoked,
+    ServiceCenterTierUpdated, TransferCancelled, TransferOffered, UnitActivated, UnitFlagged,
+    UnitRetired, UnitTransferred, WarrantyExtended,
 };
 use crate::types::{
     Batch, BatchStatus, Brand, BrandAction, BrandActionProposal, BrandAdminConfig, Claim,
-    ClaimOutcome, Config, RecallInfo, RegistryError, TransferOffer, Unit, UnitRetirement,
-    UnitStatus, UnitView, VerifyResult, VerifyStatus, DEFAULT_MAX_CLAIMS_PER_UNIT,
-    MAX_WARRANTY_MONTHS, SECONDS_PER_MONTH,
+    ClaimOutcome, Config, RecallInfo, RegistryError, ServiceCenter, TransferOffer, Unit,
+    UnitRetirement, UnitStatus, UnitView, VerifyResult, VerifyStatus, DEFAULT_MAX_CLAIMS_PER_UNIT,
+    MAX_WARRANTY_MONTHS, SECONDS_PER_MONTH, TRANSFER_COOLDOWN_SECONDS,
 };
 
 const MAX_DOMAIN_LEN: u32 = 253;
@@ -1214,6 +1215,21 @@ impl VeritagRegistry {
         Ok(())
     }
 
+    fn require_service_center_tier(
+        env: &Env,
+        brand: &Address,
+        service_center: &Address,
+        min_tier: u32,
+    ) -> Result<(), RegistryError> {
+        let record = storage::get_service_center(env, brand, service_center)
+            .filter(|sc| sc.active)
+            .ok_or(RegistryError::ServiceCenterNotAuthorized)?;
+        if record.tier < min_tier {
+            return Err(RegistryError::ServiceCenterNotAuthorized);
+        }
+        Ok(())
+    }
+
     fn build_unit_view(env: &Env, unit_id: BytesN<32>, unit: Unit) -> UnitView {
         let batch_recalled = storage::get_batch(env, &unit.brand, &unit.batch_id)
             .map(|b| b.recalled)
@@ -1357,6 +1373,7 @@ impl VeritagRegistry {
                 env,
                 brand.clone(),
                 batch_id.clone(),
+                3,
                 reason_hash.clone(),
             )?,
             BrandAction::RegisterServiceCenter(center) => {

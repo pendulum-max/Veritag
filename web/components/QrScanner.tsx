@@ -188,21 +188,12 @@ export function QrScanner() {
         <span className="text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">
           QR Tag Scanner (Camera, File, or URL)
         </span>
-        {!cameraActive ? (
+        <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={handleStartCamera}
-            aria-label="Open camera QR scanner"
-            className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500"
-          >
-            Open Camera Scanner
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={handleStopCamera}
-            aria-label="Stop camera QR scanner"
-            className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
+            onClick={() => setMuted(toggleScanMuted())}
+            aria-label={muted ? "Unmute scan sound" : "Mute scan sound"}
+            className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
           >
             {muted ? "🔇" : "🔊"}
           </button>
@@ -211,7 +202,8 @@ export function QrScanner() {
             <button
               type="button"
               onClick={() => handleStartCamera()}
-              className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
+              aria-label="Open camera QR scanner"
+              className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500"
             >
               Open Camera Scanner
             </button>
@@ -219,6 +211,7 @@ export function QrScanner() {
             <button
               type="button"
               onClick={handleStopCamera}
+              aria-label="Stop camera QR scanner"
               className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
             >
               Stop Camera

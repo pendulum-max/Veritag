@@ -10,6 +10,9 @@ pub const SECONDS_PER_MONTH: u64 = 30 * 24 * 60 * 60;
 /// Maximum total warranty duration measured from the unit's activation.
 pub const MAX_WARRANTY_MONTHS: u32 = 120;
 
+/// Minimum cooldown period (in seconds) required between consecutive unit transfers.
+pub const TRANSFER_COOLDOWN_SECONDS: u64 = 24 * 60 * 60;
+
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
@@ -40,6 +43,8 @@ pub enum RegistryError {
     BatchExpired = 24,
     BatchFrozen = 25,
     WarrantyLimitReached = 26,
+    TransferLimitReached = 27,
+    TransferCooldownActive = 28,
 }
 
 #[contracttype]

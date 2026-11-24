@@ -1,5 +1,5 @@
 import pg from "pg";
-import type { DecodedRegistryEvent } from "./decoder.js";
+import type { DecodedEvent } from "./decoder.js";
 import { AlertService, type AlertContext } from "./alerts.js";
 
 export interface IndexerCursorState {
